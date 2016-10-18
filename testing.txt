@@ -1,0 +1,5 @@
+# To test this application you need to run `pytest`
+# after installing the following dependencies
+pytest-django
+coveralls
+flake8

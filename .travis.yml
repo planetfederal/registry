@@ -1,0 +1,28 @@
+language: python
+
+sudo: required
+dist: xenial
+
+python:
+  - "2.7"
+  - "3.4"
+
+addons:
+  apt:
+    packages:
+      - libgeos-c1
+      - libxml2-dev
+
+before_script:
+  - make install
+  - make flake
+  - make smoke
+
+install:
+  - make install
+
+script:
+  - make test
+
+after_success:
+  - coveralls
