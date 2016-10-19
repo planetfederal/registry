@@ -15,7 +15,6 @@ def test_default_catalog(client):
 def test_custom_catalog(client):
     request = client.get('/sample')
     assert  200 == request.status_code
-    assert 'sample' in request.content
 
 
 if __name__ == '__main__':
