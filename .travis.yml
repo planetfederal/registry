@@ -20,10 +20,10 @@ before_script:
 
 install:
   - pip install -r requirements.txt
-  - pip install -r testing.txt
+  - python setup.py -q install
 
 script:
-  - coverage run --source=registry test_registry.py
+  - coverage run --source=registry setup.py test
 
 after_success:
   - coveralls
