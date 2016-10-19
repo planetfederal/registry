@@ -8,5 +8,5 @@ SQLAlchemy==1.1.2
 django==1.10.2
 
 # registry
-elasticsearch==1.9.0
+rawes==0.5.5
 MapProxy==1.10.0a0.dev20160928
