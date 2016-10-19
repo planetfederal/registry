@@ -9,11 +9,12 @@ def test_import():
 
 def test_default_catalog(client):
     request = client.get('/')
-    assert 'default' in request.content
+    assert  200 == request.status_code
 
 
 def test_custom_catalog(client):
     request = client.get('/sample')
+    assert  200 == request.status_code
     assert 'sample' in request.content
 
 
