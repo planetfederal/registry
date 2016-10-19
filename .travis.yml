@@ -16,7 +16,7 @@ addons:
 
 install:
   - pip install -r requirements.txt
-  - pip install -y coveralls
+  - pip install coveralls
   - python setup.py -q install
 
 before_script:
