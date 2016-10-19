@@ -21,6 +21,7 @@ install:
 
 before_script:
   - pycsw-admin.py -c get_sysprof
+  - pycsw-admin.py -c setup_db -f default.cfg
 
 script:
   - coverage run --source=registry setup.py test
