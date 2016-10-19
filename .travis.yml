@@ -19,11 +19,13 @@ install:
   - python setup.py -q install
 
 before_script:
-  - flake8 registry.py
   - pycsw-admin.py -c get_sysprof
 
 script:
   - coverage run --source=registry setup.py test
+
+after_script:
+  - flake8 registry.py
 
 after_success:
   - coveralls
