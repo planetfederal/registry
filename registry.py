@@ -219,4 +219,6 @@ if __name__ == '__main__':  # pragma: no cover
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())
 
+        sys.exit(0)
+
     management.execute_from_command_line()
