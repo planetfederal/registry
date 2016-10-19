@@ -1,4 +1,6 @@
 import os
+import sys
+import getopt
 from django.conf import settings
 from django.core import management
 from django.conf.urls import url
@@ -6,6 +8,7 @@ from django.http import HttpResponse
 from pycsw import server
 from pycsw.core import config
 from pycsw.core.repository import Repository
+from pycsw.core import admin as pycsw_admin
 from distutils.util import strtobool
 from six import StringIO
 
@@ -45,13 +48,16 @@ PYCSW = {
         'repository': {
           'source': 'registry.RegistryRepository',
           'mappings': 'registry',
+          'database': 'sqlite:////tmp/registry.db',
+          'table': 'records',
         },
         'server': {
             'maxrecords': '100',
             'pretty_print': 'true',
             'domaincounts': 'true',
             'encoding': 'UTF-8',
-            'profiles': 'apiso'
+            'profiles': 'apiso',
+            'home': '.',
         },
         'metadata:main': {
             'identification_title': 'Registry',
@@ -174,10 +180,9 @@ def csw_view(request, catalog=None):
 
     return response
 
-
 class RegistryRepository(Repository):
     def __init__(*args, **kwargs):
-        database = 'sqlite:////tmp/db'
+        database = PYCSW['repository']['database']
         return super(RegistryRepository, args[0]).__init__(database, context=config.StaticContext())
 
 
@@ -188,4 +193,30 @@ urlpatterns = [
 
 
 if __name__ == '__main__':  # pragma: no cover
+    COMMAND = None
+
+    if 'pycsw' in sys.argv[:2]:
+
+        OPTS, ARGS = getopt.getopt(sys.argv[2:], 'c:f:ho:p:ru:x:s:t:y')
+
+        for o, a in OPTS:
+            if o == '-c':
+                COMMAND = a
+
+        database = PYCSW['repository']['database']
+        table = PYCSW['repository']['table']
+        home = PYCSW['server']['home']
+
+        available_commands = ['setup_db', 'get_sysprof']
+
+        if COMMAND not in available_commands:
+            print('pycsw supports only the following commands: %s' % available_commands)
+            sys.exit(1)
+
+        if COMMAND == 'setup_db':
+            pycsw_admin.setup_db(database, table, home)
+
+        elif COMMAND == 'get_sysprof':
+            print(pycsw_admin.get_sysprof())
+
     management.execute_from_command_line()

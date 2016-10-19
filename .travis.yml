@@ -20,8 +20,8 @@ install:
   - python setup.py -q install
 
 before_script:
-  - pycsw-admin.py -c get_sysprof
-  - pycsw-admin.py -c setup_db -f default.cfg
+  - python registry.py -c get_sysprof
+  - python registry.py pycsw -c setup_db
 
 script:
   - coverage run --source=registry setup.py test
