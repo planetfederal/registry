@@ -32,8 +32,10 @@ def csw_view(request, catalog=None):
 
     csw = server.Csw(env)
     status, content = csw.dispatch_wsgi()
+    status_code = int(status[0:3])
     response = HttpResponse(content,
                             content_type=csw.contenttype,
+                            status=status_code,
                             )
 
     return response
