@@ -14,13 +14,13 @@ addons:
       - libgeos-c1
       - libxml2-dev
 
-before_script:
-  - flake8 registry.py
-  - pycsw-admin.py -c get_sysprof
-
 install:
   - pip install -r requirements.txt
   - python setup.py -q install
+
+before_script:
+  - flake8 registry.py
+  - pycsw-admin.py -c get_sysprof
 
 script:
   - coverage run --source=registry setup.py test
