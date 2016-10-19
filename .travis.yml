@@ -15,15 +15,15 @@ addons:
       - libxml2-dev
 
 before_script:
-  - make install
-  - make flake
-  - make smoke
+  - flake8 registry.py
+  - pycsw-admin.py -c get_sysprof
 
 install:
-  - make install
+  - pip install -r requirements.txt
+  - pip install -r testing.txt
 
 script:
-  - make test
+  - coverage run --source=registry test_registry.py
 
 after_success:
   - coveralls
