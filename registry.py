@@ -4,6 +4,7 @@ from django.core import management
 from django.conf.urls import url
 from django.http import HttpResponse
 from pycsw import server
+from pycsw.core import config
 from pycsw.core.repository import Repository
 from distutils.util import strtobool
 from six import StringIO
@@ -15,13 +16,35 @@ ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+         'console': {
+            'class': 'logging.StreamHandler',
+         },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+        'pycsw': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
+
 if not settings.configured:
     settings.configure(**locals())
 
 PYCSW = {
         'repository': {
-            'source': 'registry.RegistryRepository',
-            'mappings': 'registry',
+          'source': 'registry.RegistryRepository',
+          'mappings': 'registry',
         },
         'server': {
             'maxrecords': '100',
@@ -152,14 +175,16 @@ def csw_view(request, catalog=None):
     return response
 
 
+class RegistryRepository(Repository):
+    def __init__(*args, **kwargs):
+        database = 'sqlite:////tmp/db'
+        return super(RegistryRepository, args[0]).__init__(database, context=config.StaticContext())
+
+
 urlpatterns = [
     url(r'^$', csw_view),
     url(r'^(?P<catalog>\w+)?$', csw_view),
 ]
-
-
-class RegistryRepository(Repository):
-    pass
 
 
 if __name__ == '__main__':  # pragma: no cover
