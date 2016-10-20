@@ -194,6 +194,7 @@ urlpatterns = [
 
 if __name__ == '__main__':  # pragma: no cover
     COMMAND = None
+    os.environ['DJANGO_SETTINGS_MODULE'] = 'registry'
 
     if 'pycsw' in sys.argv[:2]:
 
