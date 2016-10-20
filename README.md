@@ -20,7 +20,7 @@ Step 3. Access it via http://localhost:8000/
 Features
 ========
 
- - [ ] CSW-T support via pycsw
+ - [x] CSW-T support via pycsw
  - [ ] Mirror information to Elasticsearch for faster searches
  - [ ] OpenSearch based API to enable the use of facets on different fields (extending CSW standard).
 
