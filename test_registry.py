@@ -1,24 +1,13 @@
 import pytest
 import random
-import requests
-from registry import PYCSW
+import registry
 from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
 
 
-headers = {
-    'Content-type': 'text/xml',
-    'Accept': 'text/xml',
-    'Accept-Language': 'en-US',
-    'Accept-Encoding': 'gzip,deflate',
-}
-
-main_url = 'http://localhost:8000'
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
-
-get_records_url = main_url + get_records_url
 
 
 @pytest.mark.skip(reason='')
@@ -111,38 +100,39 @@ def get_number_records(request):
 def clear_database():
     context = config.StaticContext()
     delete_records(context,
-                   PYCSW['repository']['database'],
-                   PYCSW['repository']['table'])
+                   registry.PYCSW['repository']['database'],
+                   registry.PYCSW['repository']['table'])
     yield
     delete_records(context,
-                   PYCSW['repository']['database'],
-                   PYCSW['repository']['table'])
+                   registry.PYCSW['repository']['database'],
+                   registry.PYCSW['repository']['table'])
 
 
-def test_single_transaction():
+def test_single_transaction(client):
     '''
     Test single csw transaction.
     '''
     payload = construct_payload()
-    response = requests.post(main_url, payload, headers=headers)
+    response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
 
-    response = requests.get(get_records_url)
+    response = client.get(get_records_url)
     number_records_matched = get_number_records(response)
     assert 200 == response.status_code
     assert 1 == number_records_matched
 
 
-def test_multiple_transactions():
+def test_multiple_transactions(client):
     '''
     Test multiple csw transactions.
     '''
     records_number = 10
     payload = construct_payload(records_number=records_number)
-    response = requests.post(main_url, payload, headers=headers)
+
+    response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
 
-    response = requests.get(get_records_url)
+    response = client.get(get_records_url)
     number_records_matched = get_number_records(response)
     assert 200 == response.status_code
     assert records_number == number_records_matched

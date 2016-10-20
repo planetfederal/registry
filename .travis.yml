@@ -22,7 +22,6 @@ install:
 before_script:
   - python registry.py pycsw -c get_sysprof
   - python registry.py pycsw -c setup_db
-  - python registry.py runserver & 
 
 script:
   - coverage run --source=registry setup.py test

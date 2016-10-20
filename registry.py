@@ -10,7 +10,6 @@ from pycsw.core import config
 from pycsw.core.repository import Repository
 from pycsw.core import admin as pycsw_admin
 from distutils.util import strtobool
-from six import StringIO
 
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -164,10 +163,6 @@ def csw_view(request, catalog=None):
     env = request.META.copy()
     env.update({'local.app_root': os.path.dirname(__file__),
                 'REQUEST_URI': request.build_absolute_uri()})
-
-    # Django hangs if we don't do wrap the body in StringIO
-    if request.method == 'POST':
-        env['wsgi.input'] = StringIO(request.body)
 
     # pycsw prefers absolute urls, let's get them from the request.
     url = request.build_absolute_uri()
