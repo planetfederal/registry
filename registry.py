@@ -12,6 +12,9 @@ from pycsw.core import admin as pycsw_admin
 from distutils.util import strtobool
 from six import StringIO
 
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
 __version__ = 0.1
 
 DEBUG = strtobool(os.getenv('REGISTRY_DEBUG', 'True'))
@@ -152,7 +155,8 @@ MD_CORE_MODEL = {
     }
 }
 
-
+# TODO: make registry work using CSRF cookie.
+@method_decorator(csrf_exempt, name='dispatch')
 def csw_view(request, catalog=None):
     """CSW dispatch view.
        Wraps the WSGI call and allows us to tweak any django settings.
