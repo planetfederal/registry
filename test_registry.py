@@ -1,6 +1,9 @@
 import pytest
 import random
+import rawes
 import registry
+import requests
+import time
 from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
@@ -8,6 +11,9 @@ from pycsw.core.etree import etree
 
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
+
+
+search_url = '%s/_search' % (registry.REGISTRY_SEARCH_URL)
 
 
 @pytest.mark.skip(reason='')
@@ -97,12 +103,18 @@ def get_number_records(request):
 
 
 @pytest.yield_fixture(autouse=True)
-def clear_database():
+def clear_records():
+    '''
+    Function that clears records for both database and search backend.
+    '''
+    registry.REGISTRY_INDEX_NAME = 'test'
     context = config.StaticContext()
     delete_records(context,
                    registry.PYCSW['repository']['database'],
                    registry.PYCSW['repository']['table'])
     yield
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.delete(registry.REGISTRY_INDEX_NAME)
     delete_records(context,
                    registry.PYCSW['repository']['database'],
                    registry.PYCSW['repository']['table'])
@@ -121,6 +133,15 @@ def test_single_transaction(client):
     assert 200 == response.status_code
     assert 1 == number_records_matched
 
+    # Give backend some time.
+    time.sleep(1)
+
+    search_response = requests.get(search_url)
+    search_response = search_response.json()
+    assert 'hits' in search_response
+    assert 'total' in search_response['hits']
+    assert 1 == search_response['hits']['total']
+
 
 def test_multiple_transactions(client):
     '''
@@ -136,6 +157,15 @@ def test_multiple_transactions(client):
     number_records_matched = get_number_records(response)
     assert 200 == response.status_code
     assert records_number == number_records_matched
+
+    # Give backend some time.
+    time.sleep(5)
+
+    search_response = requests.get(search_url)
+    search_response = search_response.json()
+    assert 'hits' in search_response
+    assert 'total' in search_response['hits']
+    assert records_number == search_response['hits']['total']
 
 
 if __name__ == '__main__':

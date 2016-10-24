@@ -1,18 +1,24 @@
 import os
+import rawes
 import sys
 import getopt
 from django.conf import settings
 from django.core import management
 from django.conf.urls import url
 from django.http import HttpResponse
-from pycsw import server
-from pycsw.core import config
-from pycsw.core.repository import Repository
-from pycsw.core import admin as pycsw_admin
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from distutils.util import strtobool
 
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
+from pycsw import server
+from pycsw.core import config
+from pycsw.core import admin as pycsw_admin
+from pycsw.core.repository import Repository
+from pycsw.core.util import wkt2geom
+
+from shapely.geometry import box
+
+from rawes.elastic_exception import ElasticException
 
 __version__ = 0.1
 
@@ -20,6 +26,10 @@ DEBUG = strtobool(os.getenv('REGISTRY_DEBUG', 'True'))
 ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
+
+REGISTRY_INDEX_NAME = os.getenv('REGISTRY_INDEX_NAME', 'registry')
+REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
+REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 
 LOGGING = {
     'version': 1,
@@ -179,10 +189,61 @@ def csw_view(request, catalog=None):
 
     return response
 
+
+def record_to_dict(record):
+    #TODO: check for correct order.
+    bbox = wkt2geom(record.wkt_geometry)
+    min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
+    record_dict = {
+        'title': record.title,
+        'abstract': record.abstract,
+        'bbox': bbox,
+        'min_x': min_x,
+        'min_y': min_y,
+        'max_x': max_x,
+        'max_y': max_y,
+        # 'rectangle': box(min_x, min_y, max_x, max_y),
+        'layer_geoshape': {
+            'type': 'envelope',
+            'coordinates': [
+                [min_x, max_y], [max_x, min_y]
+            ]
+        }
+    }
+
+    return record_dict
+
 class RegistryRepository(Repository):
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
+
+        es =  rawes.Elastic(REGISTRY_SEARCH_URL)
+        try:
+            es.get(REGISTRY_INDEX_NAME)
+        except ElasticException as e:
+            mapping = {
+                "mappings": {
+                    "layer": {
+                        "properties": {
+                            "layer_geoshape": {
+                                "type": "geo_shape",
+                                "tree": "quadtree",
+                                "precision": REGISTRY_MAPPING_PRECISION
+                            }
+                        }
+                    }
+                }
+            }
+            es.put(REGISTRY_INDEX_NAME, data=mapping)
+        self.es = es
+
         database = PYCSW['repository']['database']
-        return super(RegistryRepository, args[0]).__init__(database, context=config.StaticContext())
+        return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
+
+    def insert(self, *args, **kwargs):
+        record = args[0]
+        es_dict = record_to_dict(record)
+        self.es[REGISTRY_INDEX_NAME]['layer'].post(data=es_dict)
+        super(RegistryRepository, self).insert(*args)
 
 
 urlpatterns = [
