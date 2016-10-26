@@ -1,35 +1,86 @@
+import json
 import pytest
 import random
 import rawes
 import registry
 import requests
 import time
+from datetime import datetime
+from django.test import RequestFactory
 from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
-
+try:
+    from urlparse import parse_qs
+except ImportError:
+    from urllib.parse import parse_qs
 
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
 
-
+site_url = 'http://localhost:8000'
 search_url = '%s/_search' % (registry.REGISTRY_SEARCH_URL)
+default_params = {
+    "q_time": "[* TO *]",
+    "q_geo": "[-90,-180 TO 90,180]",
+    "d_docs_limit": 0,
+    "d_docs_page": 1,
+    "d_docs_sort": "score"
+}
+
+layers_list = [
+    {
+        'identifier': 1,
+        'title': 'layer_1',
+        'creator': 'user_1',
+        'lower_corner_1': -40.0,
+        'upper_corner_1': -20.0,
+        'lower_corner_2': -40.0,
+        'upper_corner_2': -20.0,
+        'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    },
+    {
+        'identifier': 2,
+        'title': 'layer_2',
+        'creator': 'user_1',
+        'lower_corner_1': -40.0,
+        'upper_corner_1': -20.0,
+        'lower_corner_2': 40.0,
+        'upper_corner_2': 20.0,
+        'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    },
+    {
+        'identifier': 3,
+        'title': 'layer_3',
+        'creator': 'user_2',
+        'lower_corner_1': 40.0,
+        'upper_corner_1': 20.0,
+        'lower_corner_2': 40.0,
+        'upper_corner_2': 20.0,
+        'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    },
+    {
+        'identifier': 4,
+        'title': 'layer_4',
+        'creator': 'user_2',
+        'lower_corner_1': 40.0,
+        'upper_corner_1': 20.0,
+        'lower_corner_2': -40.0,
+        'upper_corner_2': -20.0,
+        'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    }
+]
 
 
 @pytest.mark.skip(reason='')
-def get_xml_block():
-    identifier = random.randint(1e6, 1e7)
-    lower_corner_1 = random.uniform(-90, 0)
-    lower_corner_2 = random.uniform(-180, 0)
-    upper_corner_1 = random.uniform(0, 90)
-    upper_corner_2 = random.uniform(0, 180)
+def get_xml_block(dictionary):
     xml_block = (
         '  <csw:Record>\n'
         '    <dc:identifier>%d</dc:identifier>\n'
-        '    <dc:title>acus netus eleifend facilisis enim leo sollicitudin '
-        'metus ad erat quisque</dc:title>\n'
+        '    <dc:title>%s</dc:title>\n'
+        '    <dc:creator>%s</dc:creator>\n'
         '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
-        '    <dct:modified>2016-08-24T23:54:58Z</dct:modified>\n'
+        '    <dct:modified>%s</dct:modified>\n'
         '    <dct:abstract>Augue purus vehicula ridiculus eu donec et eget '
         'sit justo. Fames dolor ipsum dignissim aliquet. Proin massa congue '
         'lorem tortor facilisis feugiat vitae ut. Purus justo cum arcu '
@@ -61,14 +112,43 @@ def get_xml_block():
         '        <ows:UpperCorner>%4f %4f</ows:UpperCorner>\n'
         '    </ows:BoundingBox>\n'
         '    </csw:Record>\n'
-    ) % (identifier, identifier, identifier, lower_corner_1, lower_corner_2,
-         upper_corner_1, upper_corner_2)
+    ) % (dictionary['identifier'],
+         dictionary['title'],
+         dictionary['creator'],
+         dictionary['modified'].isoformat().split('.')[0],
+         dictionary['identifier'],
+         dictionary['identifier'],
+         dictionary['lower_corner_1'],
+         dictionary['lower_corner_2'],
+         dictionary['upper_corner_1'],
+         dictionary['upper_corner_2'])
 
     return xml_block
 
 
 @pytest.mark.skip(reason='')
-def construct_payload(records_number=1):
+def create_layers_list(records_number):
+    layers = [
+        {
+            'identifier': random.randint(1e6, 1e7),
+            'title': 'Random data',
+            'creator': 'Random user',
+            'modified': datetime(random.randint(1950, 2000),
+                                 random.randint(1, 12),
+                                 random.randint(1, 28),
+                                 tzinfo=registry.TIMEZONE),
+            'lower_corner_1': random.uniform(-90, 0),
+            'lower_corner_2': random.uniform(-180, 0),
+            'upper_corner_1': random.uniform(0, 90),
+            'upper_corner_2': random.uniform(0, 180)
+            } for item in range(records_number)
+    ]
+
+    return layers
+
+
+@pytest.mark.skip(reason='')
+def construct_payload(*args, **kwargs):
     xml_string = (
         '<csw:Transaction xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" '
         'xmlns:ows="http://www.opengis.net/ows" '
@@ -84,8 +164,13 @@ def construct_payload(records_number=1):
     end_part = ('  </csw:Insert>\n'
                 '</csw:Transaction>')
 
-    for i in range(records_number):
-        xml_block = get_xml_block()
+    try:
+        layers_list = kwargs['layers_list']
+    except KeyError:
+        layers_list = create_layers_list(kwargs['records_number'])
+
+    for item in layers_list:
+        xml_block = get_xml_block(item)
         xml_string += xml_block
 
     xml_string += end_part
@@ -124,7 +209,7 @@ def test_single_transaction(client):
     '''
     Test single csw transaction.
     '''
-    payload = construct_payload()
+    payload = construct_payload(records_number=1)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
 
@@ -134,7 +219,7 @@ def test_single_transaction(client):
     assert 1 == number_records_matched
 
     # Give backend some time.
-    time.sleep(1)
+    time.sleep(3)
 
     search_response = requests.get(search_url)
     search_response = search_response.json()
@@ -166,6 +251,313 @@ def test_multiple_transactions(client):
     assert 'hits' in search_response
     assert 'total' in search_response['hits']
     assert records_number == search_response['hits']['total']
+
+
+def test_parse_params(client):
+    payload = construct_payload(records_number=1)
+    response = client.post('/', payload, content_type='text/xml')
+    assert 200 == response.status_code
+    time.sleep(2)
+
+    params_test = {
+        "q.time": "[* TO *]",
+        "q.geo": "[-90,-180 TO 90,180]",
+        "d.docs.limit": 0,
+        "d.docs.page": 1,
+        "d.docs.sort": "score"
+    }
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params_test)
+    assert 200 == response.status_code
+
+    factory = RequestFactory()
+    req = factory.get(api_url, params_test)
+    parsed_url_keys = registry.parse_get_params(req).keys()
+
+    assert_dots = ['.' in key for key in parsed_url_keys]
+    assert False in assert_dots
+
+
+def test_search_api(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, default_params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+    params = default_params.copy()
+    params['search_engine_endpoint'] = 'http://wrong.url:9200'
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    es_status, data = results
+    assert 500 == es_status
+    assert 'error' in data
+
+    # Sort time
+    params.pop('search_engine_endpoint', None)
+    params['d_docs_sort'] = 'time'
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    docs = results['d.docs']
+    range_dates = [int(doc['layer_date'].split('-')[0]) for doc in docs]
+
+    for item in zip(range_dates, range_dates[1:]):
+        first_year, second_year = item[0], item[1]
+        assert first_year >= second_year
+
+    # Test 400 error giving wrong search index.
+    params = default_params.copy()
+    api_url = '{0}/{1}/api/'.format(site_url, 'wrong_index')
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    es_status, data = results
+    assert 400 == es_status
+    assert 'error' in data
+
+    # Test for original response.
+    params['original_response'] = 1
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 'a.matchDocs' not in results
+
+
+def test_q_text(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    params = default_params.copy()
+    params["q_text"] = "title:\"{0}\"".format(layers_list[0]['title'])
+    params["d_docs_limit"] = 100
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    for doc in results.get("d.docs", []):
+        assert layers_list[0]['title'] == doc['title']
+
+
+def test_q_user(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    params = default_params.copy()
+    query_user = "user_1"
+    params["q_user"] = query_user
+    params["d_docs_limit"] = 100
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
+
+    for doc in results.get("d.docs", []):
+        assert query_user == doc['layer_originator']
+
+
+def test_q_geo(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    params = default_params.copy()
+    params["d_docs_limit"] = 100
+
+    # top right square
+    params["q_geo"] = "[0,0 TO 30,30]"
+
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    # Bottom left
+    params["q_geo"] = "[-30,-30 TO 0,0]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    # big square
+    params["q_geo"] = "[-30,-30 TO 30,30]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 4 == results['a.matchDocs']
+
+    # center where no layers
+    params["q_geo"] = "[-5,-5 TO 5,5]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 0 == results['a.matchDocs']
+
+    # Wrong format
+    params["q_geo"] = "[-5,-5 5,5]"
+    response = client.get(api_url, params)
+    assert 400 == response.status_code
+
+
+def test_q_time(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    params = default_params.copy()
+    params["d_docs_limit"] = 100
+
+    # test validations
+    params["q_time"] = "[2000-01-01 - 2001-01-01T00:00:00]"
+    response = client.get(api_url, params)
+    assert 400 == response.status_code
+
+    # Test asterisks.
+    params["q_time"] = "[* TO *]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+    # test range
+    # entire year 2000
+    params["q_time"] = "[2000-01-01 TO 2001-01-01T00:00:00]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    params["q_time"] = "[* TO 2001-01-01T00:00:00]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    params["q_time"] = "[2000-01-01 TO *]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+    # Test error when q_time is not given.
+    params["a_time_limit"] = 1
+    params.pop('q_time', None)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    es_status, data = results
+    assert 400 == es_status
+    assert 'error' in data
+    assert 'q_time MUST BE initialized' in data['error']['msg']
+
+    # Test error when a_time_gap is not given.
+    params["q_time"] = "[* TO *]"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    es_status, data = results
+    assert 400 == es_status
+    assert 'error' in data
+    assert 'a_time_gap MUST BE initialized' in data['error']['msg']
+
+    # test complete min and max when q time is asterisks
+    params["a_time_gap"] = "P1Y"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+    assert results["a.time"]["start"].upper() == "2000-01-01T00:00:00Z"
+    assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
+
+    # test facets
+    params["q_time"] = "[2000 TO 2022]"
+    params["a_time_limit"] = 1
+    params["a_time_gap"] = "P1Y"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+    assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
+    assert len(results["a.time"]["counts"]) == len(layers_list)
+
+
+def test_utilities(client):
+    payload = construct_payload(records_number=1)
+    response = client.post('/', payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    datetime_range = "[2013-03-01 TO 2014-05-02T23:00:00]"
+    start, end = registry.parse_datetime_range(datetime_range)
+    assert start.get("is_common_era")
+
+    assert start.get("parsed_datetime").year == 2013
+    assert start.get("parsed_datetime").month == 3
+    assert start.get("parsed_datetime").day == 1
+    assert end.get("is_common_era")
+    assert end.get("parsed_datetime").year == 2014
+    assert end.get("parsed_datetime").month == 5
+    assert end.get("parsed_datetime").day == 2
+    assert end.get("parsed_datetime").hour == 23
+    assert end.get("parsed_datetime").minute == 0
+    assert end.get("parsed_datetime").second == 0
+
+    datetime_range = "[-500000000 TO 2014-05-02T23:00:00]"
+    start, end = registry.parse_datetime_range(datetime_range)
+    assert not start.get("is_common_era")
+    assert start.get("parsed_datetime") == "-500000000-01-01T00:00:00Z"
+
+    start, end = registry.parse_datetime_range("[* TO *]")
+    assert start.get("is_common_era")
+    assert start.get("parsed_datetime") is None
+    assert end.get("parsed_datetime") is None
+
+    # test_parse_ISO8601
+    quantity, units = registry.parse_ISO8601("P3D")
+    assert quantity == 3
+    assert units[0] == "DAYS"
+
+    # test_gap_to_sorl
+    value = registry.gap_to_sorl("P3D")
+    assert value == "+3DAYS"
+
+    # test_parse_geo_box
+    value = registry.parse_geo_box("[-90,-180 TO 90,180]")
+    assert value.bounds[0] == -90
+    assert value.bounds[1] == -180
+    assert value.bounds[2] == 90
+    assert value.bounds[3] == 180
+
+    # test_request_time_facet
+    d = registry.request_time_facet("x", "[2000 TO 2014-01-02T11:12:13]",
+                                    None,
+                                    1000)
+    assert type(d) == dict
+    assert d['f.x.facet.range.start'] == '2000-01-01T00:00:00Z'
+    assert d['f.x.facet.range.end'] == '2014-01-02T11:12:13Z'
+    assert d['f.x.facet.range.gap'] == '+6DAYS'
+    assert d['facet.range'] == 'x'
+
+    d = registry.request_time_facet("y", "[-5000000 TO 2016]", "P1D", 1)
+    d['f.y.facet.range.start'] == '-5000000-01-01T00:00:00Z'
+    d['f.y.facet.range.end'] == '2016-01-01T00:00:00Z'
+    d['f.y.facet.range.gap'] == '+1DAYS'
+    d['facet.range'] == 'y'
 
 
 if __name__ == '__main__':

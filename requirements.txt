@@ -10,3 +10,7 @@ django==1.10.2
 # registry
 rawes==0.5.5
 MapProxy==1.10.0a0.dev20160928
+
+# Search API
+djangorestframework==3.3.3
+isodate==0.5.4
