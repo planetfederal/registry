@@ -17,6 +17,20 @@ Step 2. Run the server.
 Step 3. Access it via http://localhost:8000/
 
 
+Testing
+=======
+
+Step 1. Initialize the database.
+
+    python registry.py pycsw -c setup_db
+
+Step 2. Start elasticsearch on localhost:9200
+
+Step 3.
+
+    python setup.py test
+
+
 Features
 ========
 
