@@ -290,7 +290,14 @@ def test_search_api(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
 
+    # Test invalidated d_docs_page.
     params = default_params.copy()
+    params['d_docs_page'] = -1
+    response = client.get(api_url, params)
+    assert 400 == response.status_code
+    params.pop('d_docs_page', None)
+
+    # Test wrong search engine url.
     params['search_engine_endpoint'] = 'http://wrong.url:9200'
     response = client.get(api_url, params)
     assert 200 == response.status_code
@@ -475,7 +482,7 @@ def test_q_time(client):
     assert 'error' in data
     assert 'a_time_gap MUST BE initialized' in data['error']['msg']
 
-    # test complete min and max when q time is asterisks
+    # test complete min and max when q time is asterisks.
     params["a_time_gap"] = "P1Y"
     response = client.get(api_url, params)
     assert 200 == response.status_code
@@ -483,6 +490,27 @@ def test_q_time(client):
     assert len(layers_list) == results['a.matchDocs']
     assert results["a.time"]["start"].upper() == "2000-01-01T00:00:00Z"
     assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
+
+    # Test histograms generation using time values.
+    params["a_time_gap"] = "PT24H"
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+    assert results["a.time"]["start"].upper() == "2000-03-01T00:00:00Z"
+    assert results["a.time"]["end"].upper() == "2003-03-01T00:00:00Z"
+
+    # Test wrong values for a_time_gap.
+    params["a_time_gap"] = "P1ye"
+    with pytest.raises(Exception) as excinfo:
+        response = client.get(api_url, params)
+    assert 'Does not match' in str(excinfo.value)
+
+    # Test wrong values for a_time_gap.
+    params["a_time_gap"] = "PT2h"
+    with pytest.raises(Exception) as excinfo:
+        response = client.get(api_url, params)
+    assert 'Does not match' in str(excinfo.value)
 
     # test facets
     params["q_time"] = "[2000 TO 2022]"
@@ -532,33 +560,12 @@ def test_utilities(client):
     assert quantity == 3
     assert units[0] == "DAYS"
 
-    # test_gap_to_sorl
-    value = registry.gap_to_sorl("P3D")
-    assert value == "+3DAYS"
-
     # test_parse_geo_box
     value = registry.parse_geo_box("[-90,-180 TO 90,180]")
     assert value.bounds[0] == -90
     assert value.bounds[1] == -180
     assert value.bounds[2] == 90
     assert value.bounds[3] == 180
-
-    # test_request_time_facet
-    d = registry.request_time_facet("x", "[2000 TO 2014-01-02T11:12:13]",
-                                    None,
-                                    1000)
-    assert type(d) == dict
-    assert d['f.x.facet.range.start'] == '2000-01-01T00:00:00Z'
-    assert d['f.x.facet.range.end'] == '2014-01-02T11:12:13Z'
-    assert d['f.x.facet.range.gap'] == '+6DAYS'
-    assert d['facet.range'] == 'x'
-
-    d = registry.request_time_facet("y", "[-5000000 TO 2016]", "P1D", 1)
-    d['f.y.facet.range.start'] == '-5000000-01-01T00:00:00Z'
-    d['f.y.facet.range.end'] == '2016-01-01T00:00:00Z'
-    d['f.y.facet.range.gap'] == '+1DAYS'
-    d['facet.range'] == 'y'
-
 
 if __name__ == '__main__':
     pytest.main()
