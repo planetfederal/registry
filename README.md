@@ -36,8 +36,9 @@ Features
 
  - [x] CSW-T support via pycsw
  - [x] Mirror information to Elasticsearch for faster searches
- - [ ] OpenSearch based API to enable the use of facets on different fields (extending CSW standard).
+ - [x] OpenSearch based API to enable the use of facets on different fields (extending CSW standard).
  - [ ] MapProxy support for easy TMS/WMTS access to any kind of resource
+ - [ ] Multi-catalog support.
 
 Tests
 ======
