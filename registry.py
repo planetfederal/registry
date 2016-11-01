@@ -224,6 +224,7 @@ def record_to_dict(record):
 
     return record_dict
 
+
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
 
@@ -625,16 +626,15 @@ def elasticsearch(serializer, catalog):
         # looks ugly but will work on normal ES response for "/".
         ES_VERSION = int(response.json()["version"]["number"][0])
 
-    query_string = {
-        "query_string": {
-            "query": q_text
-        }
-    }
 
     # String searching
     if q_text:
         # Wrapping query string into a query filter.
-
+        query_string = {
+            "query_string": {
+                "query": q_text
+            }
+        }
         if ES_VERSION < 2:
             query_string = {
                 "query": {
@@ -827,11 +827,6 @@ def elasticsearch(serializer, catalog):
     data["d.docs"] = docs
 
     return data
-
-
-class CatalogSerializer(serializers.HyperlinkedModelSerializer):
-    search_url = serializers.CharField(source="get_search_url",
-                                       read_only=True)
 
 
 def search_view(request, catalog):
