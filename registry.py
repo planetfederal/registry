@@ -281,101 +281,6 @@ def parse_get_params(request):
     return new_get
 
 
-def compute_gap(start, end, time_limit):
-    """
-    Compute a gap that seems reasonable, considering natural time units and limit.
-    # TODO: make it to be reasonable.
-    # TODO: make it to be small unit of time sensitive.
-    :param start: datetime
-    :param end: datetime
-    :param time_limit: gaps count
-    :return: solr's format duration.
-    """
-    if is_range_common_era(start, end):
-        duration = end.get("parsed_datetime") - start.get("parsed_datetime")
-        unit = int(math.ceil(duration.days / float(time_limit)))
-        return "+{0}DAYS".format(unit)
-    else:
-        # at the moment can not do maths with BCE dates.
-        # those dates are relatively big, so 100 years are reasonable in those cases.
-        # TODO: calculate duration on those cases.
-        return "+100YEARS"
-
-
-def is_range_common_era(start, end):
-    """
-    does the range contains CE dates.
-    BCE and CE are not compatible at the moment.
-    :param start:
-    :param end:
-    :return: False if contains BCE dates.
-    """
-    return all([start.get("is_common_era"),
-                end.get("is_common_era")])
-
-
-def request_time_facet(field, time_filter, time_gap, time_limit=100):
-    """
-    time facet query builder
-    :param field: map the query to this field.
-    :param time_limit: Non-0 triggers time/date range faceting. This value is the maximum number of time ranges to
-    return when a.time.gap is unspecified. This is a soft maximum; less will usually be returned.
-    A suggested value is 100.
-    Note that a.time.gap effectively ignores this value.
-    See Solr docs for more details on the query/response format.
-    :param time_filter: From what time range to divide by a.time.gap into intervals.
-    Defaults to q.time and otherwise 90 days.
-    :param time_gap: The consecutive time interval/gap for each time range. Ignores a.time.limit.
-    The format is based on a subset of the ISO-8601 duration format
-    :return: facet.range=manufacturedate_dt&f.manufacturedate_dt.facet.range.start=2006-02-11T15:26:37Z&f.
-    manufacturedate_dt.facet.range.end=2006-02-14T15:26:37Z&f.manufacturedate_dt.facet.range.gap=+1DAY
-    """
-    start, end = parse_datetime_range(time_filter)
-
-    key_range_start = "f.{0}.facet.range.start".format(field)
-    key_range_end = "f.{0}.facet.range.end".format(field)
-    key_range_gap = "f.{0}.facet.range.gap".format(field)
-    key_range_mincount = "f.{0}.facet.mincount".format(field)
-
-    if time_gap:
-        gap = gap_to_sorl(time_gap)
-    else:
-        gap = compute_gap(start, end, time_limit)
-
-    value_range_start = start.get("parsed_datetime")
-    if start.get("is_common_era"):
-        value_range_start = start.get("parsed_datetime").isoformat().replace("+00:00", "") + "Z"
-
-    value_range_end = start.get("parsed_datetime")
-    if end.get("is_common_era"):
-        value_range_end = end.get("parsed_datetime").isoformat().replace("+00:00", "") + "Z"
-
-    value_range_gap = gap
-
-    params = {
-        'facet.range': field,
-        key_range_start: value_range_start,
-        key_range_end: value_range_end,
-        key_range_gap: value_range_gap,
-        key_range_mincount: 1
-    }
-
-    return params
-
-
-def gap_to_sorl(time_gap):
-    """
-    P1D to +1DAY
-    :param time_gap:
-    :return: solr's format duration.
-    """
-    quantity, unit = parse_ISO8601(time_gap)
-    if unit[0] == "WEEKS":
-        return "+{0}DAYS".format(quantity * 7)
-    else:
-        return "+{0}{1}".format(quantity, unit[0])
-
-
 def parse_datetime_range_to_solr(time_filter):
     start, end = parse_datetime_range(time_filter)
     left = "*"
@@ -417,9 +322,6 @@ def parse_datetime_range(time_filter):
     :param time_filter: [2013-03-01 TO 2013-05-01T00:00:00]
     :return: datetime.datetime(2013, 3, 1, 0, 0), datetime.datetime(2013, 5, 1, 0, 0)
     """
-
-    if not time_filter:
-        time_filter = "[* TO *]"
 
     start, end = parse_solr_time_range_as_pair(time_filter)
     start, end = parse_datetime(start), parse_datetime(end)
@@ -497,7 +399,7 @@ def gap_to_elastic(time_gap):
     # elastic units link: https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html#time-units
     elastic_units = {
         "YEARS": 'y',
-        "MONTHS": 'M',
+        "MONTHS": 'm',
         "WEEKS": 'w',
         "DAYS": 'd',
         "HOURS": 'h',
@@ -506,6 +408,7 @@ def gap_to_elastic(time_gap):
     }
     quantity, unit = parse_ISO8601(time_gap)
     interval = "{0}{1}".format(str(quantity), elastic_units[unit[0]])
+
     return interval
 
 
@@ -650,32 +553,28 @@ class SearchSerializer(serializers.Serializer):
         Would be for example: [2013-03-01 TO 2013-04-01T00:00:00] and/or [* TO *]
         Returns a valid sorl value. [2013-03-01T00:00:00Z TO 2013-04-01T00:00:00Z] and/or [* TO *]
         """
-        if value:
-            try:
-                range = parse_datetime_range_to_solr(value)
-                return range
-            except Exception as e:
-                raise serializers.ValidationError(e)
+        try:
+            range = parse_datetime_range_to_solr(value)
+            return range
+        except Exception as e:
+            raise serializers.ValidationError(e)
 
-        return value
 
     def validate_q_geo(self, value):
         """
         Would be for example: [-90,-180 TO 90,180]
         """
-        if value:
-            try:
-                rectangle = parse_geo_box(value)
-                return "[{0},{1} TO {2},{3}]".format(
-                    rectangle.bounds[0],
-                    rectangle.bounds[1],
-                    rectangle.bounds[2],
-                    rectangle.bounds[3],
-                )
-            except Exception as e:
-                raise serializers.ValidationError(e)
+        try:
+            rectangle = parse_geo_box(value)
+            return "[{0},{1} TO {2},{3}]".format(
+                rectangle.bounds[0],
+                rectangle.bounds[1],
+                rectangle.bounds[2],
+                rectangle.bounds[3],
+            )
+        except Exception as e:
+            raise serializers.ValidationError(e)
 
-        return value
 
     def validate_d_docs_page(self, value):
         """
@@ -912,7 +811,6 @@ def elasticsearch(serializer, catalog):
                     gap_count.append(temp)
             a_gap['counts'] = gap_count
             data['a.time'] = a_gap
-
 
     if not int(d_docs_limit) == 0:
         for item in es_response['hits']['hits']:
