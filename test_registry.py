@@ -37,7 +37,8 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
-        'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE),
+        'i': 0
     },
     {
         'identifier': 2,
@@ -47,7 +48,8 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
-        'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE),
+        'i': 1
     },
     {
         'identifier': 3,
@@ -57,7 +59,8 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
-        'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE),
+        'i': 2
     },
     {
         'identifier': 4,
@@ -67,7 +70,8 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
-        'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE),
+        'i': 3
     }
 ]
 
@@ -77,11 +81,11 @@ def get_xml_block(dictionary):
     xml_block = (
         '  <csw:Record>\n'
         '    <dc:identifier>%d</dc:identifier>\n'
-        '    <dc:title>%s</dc:title>\n'
+        '    <dc:title>%s titleterm%d</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
         '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
         '    <dct:modified>%s</dct:modified>\n'
-        '    <dct:abstract>Augue purus vehicula ridiculus eu donec et eget '
+        '    <dct:abstract>Augue purus abstractterm%d vehicula ridiculus eu donec et eget '
         'sit justo. Fames dolor ipsum dignissim aliquet. Proin massa congue '
         'lorem tortor facilisis feugiat vitae ut. Purus justo cum arcu '
         'nascetur etiam hymenaeos volutpat amet. Lacus curae cras quam eni '
@@ -113,9 +117,10 @@ def get_xml_block(dictionary):
         '    </ows:BoundingBox>\n'
         '    </csw:Record>\n'
     ) % (dictionary['identifier'],
-         dictionary['title'],
+         dictionary['title'], dictionary['i'],
          dictionary['creator'],
          dictionary['modified'].isoformat().split('.')[0],
+         dictionary['i'],
          dictionary['identifier'],
          dictionary['identifier'],
          dictionary['lower_corner_1'],
@@ -140,7 +145,8 @@ def create_layers_list(records_number):
             'lower_corner_1': random.uniform(-90, 0),
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
-            'upper_corner_2': random.uniform(0, 180)
+            'upper_corner_2': random.uniform(0, 180),
+            'i': item
             } for item in range(records_number)
     ]
 
@@ -329,6 +335,20 @@ def test_search_api(client):
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
 
+def test_q_text_keywords(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    params = default_params.copy()
+    params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
+    params["d_docs_limit"] = 100
+
+    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
 
 def test_q_text(client):
     payload = construct_payload(layers_list=layers_list)
@@ -346,7 +366,7 @@ def test_q_text(client):
     assert 1 == results['a.matchDocs']
 
     for doc in results.get("d.docs", []):
-        assert layers_list[0]['title'] == doc['title']
+        assert layers_list[0]['title'] + ' titleterm0' == doc['title']
 
 
 def test_q_user(client):

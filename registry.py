@@ -239,7 +239,16 @@ class RegistryRepository(Repository):
                                 "type": "geo_shape",
                                 "tree": "quadtree",
                                 "precision": REGISTRY_MAPPING_PRECISION
-                            }
+                            },
+                            "title": {
+                                "type" : "text",
+                                "copy_to" : "alltext"
+                            },
+                            "abstract" : {
+                                "type" : "text",
+                                "copy_to" : "alltext",
+                            },
+                            "alltext" : { "type" : "text" }
                         }
                     }
                 }
