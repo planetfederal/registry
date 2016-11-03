@@ -33,7 +33,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
-        'i': 0
+        'i': 0,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
@@ -45,7 +45,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
-        'i': 1
+        'i': 1,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
@@ -57,7 +57,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
-        'i': 2
+        'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
@@ -69,7 +69,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
-        'i': 3
+        'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
@@ -148,7 +148,7 @@ def create_layers_list(records_number):
             'lower_corner_1': random.uniform(-90, 0),
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
-            'i': item
+            'i': item,
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
     ]
@@ -345,6 +345,7 @@ def test_search_api(client):
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
 
+
 def test_q_text_keywords(client):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
@@ -354,11 +355,12 @@ def test_q_text_keywords(client):
     params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
     params["d_docs_limit"] = 100
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
+
 
 def test_q_text(client):
     payload = construct_payload(layers_list=layers_list)
