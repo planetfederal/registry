@@ -18,7 +18,6 @@ except ImportError:
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
 
-site_url = 'http://localhost:8000'
 search_url = '%s/_search' % (registry.REGISTRY_SEARCH_URL)
 default_params = {
     "q_time": "[* TO *]",
@@ -267,7 +266,7 @@ def test_parse_params(client):
         "d.docs.sort": "score"
     }
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, params_test)
     assert 200 == response.status_code
 
@@ -284,7 +283,7 @@ def test_search_api(client):
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -321,7 +320,7 @@ def test_search_api(client):
 
     # Test 400 error giving wrong search index.
     params = default_params.copy()
-    api_url = '{0}/{1}/api/'.format(site_url, 'wrong_index')
+    api_url = '/{0}/api/'.format('wrong_index')
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -346,7 +345,7 @@ def test_q_text(client):
     params["q_text"] = "title:\"{0}\"".format(layers_list[0]['title'])
     params["d_docs_limit"] = 100
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -366,7 +365,7 @@ def test_q_user(client):
     params["q_user"] = query_user
     params["d_docs_limit"] = 100
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -381,7 +380,7 @@ def test_q_geo(client):
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
@@ -425,7 +424,7 @@ def test_q_time(client):
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '{0}/{1}/api/'.format(site_url, registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
@@ -566,6 +565,7 @@ def test_utilities(client):
     assert value.bounds[1] == -180
     assert value.bounds[2] == 90
     assert value.bounds[3] == 180
+
 
 if __name__ == '__main__':
     pytest.main()
