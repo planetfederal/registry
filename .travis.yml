@@ -22,11 +22,8 @@ addons:
       - elasticsearch
       - python-flake8
 
-
-before_install:
-  - "/usr/local/bin/elasticsearch -d --default.path.conf=/etc/elasticsearch/"
-  - "sleep 10"
-  - "curl http://localhost:9200/"
+service:
+  - elasticsearch
 
 install:
   - pip install -r requirements.txt
