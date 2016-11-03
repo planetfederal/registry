@@ -8,21 +8,25 @@ python:
   - "2.7"
   - "3.5"
 
+env:
+  - VERSION=5.0
+  - VERSION=1.7
+
 addons:
   apt:
     sources:
-      - elasticsearch-1.7
+      - elasticsearch-$VERSION
     packages:
       - libgeos-c1
       - libxml2-dev
       - elasticsearch
-      - python-flake8 
+      - python-flake8
 
-services:
-  - elasticsearch
 
 before_install:
-  - sleep 10
+  - "/usr/local/bin/elasticsearch -d --default.path.conf=/etc/elasticsearch/"
+  - "sleep 10"
+  - "curl http://localhost:9200/"
 
 install:
   - pip install -r requirements.txt
