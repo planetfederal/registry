@@ -1,22 +1,27 @@
 import datetime
 import isodate
 import json
-import math
 import os
 import rawes
 import re
 import requests
 import sys
 import getopt
+import yaml
+import io
+import logging
+
 from dateutil import tz
 from dateutil.parser import parse
+
+from distutils.util import strtobool
+
 from django.conf import settings
 from django.core import management
 from django.conf.urls import url
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from distutils.util import strtobool
 
 from pycsw import server
 from pycsw.core import config
@@ -24,9 +29,19 @@ from pycsw.core import admin as pycsw_admin
 from pycsw.core.repository import Repository
 from pycsw.core.util import wkt2geom
 
+from mapproxy.config.config import load_default_config, load_config
+from mapproxy.config.spec import validate_options
+from mapproxy.config.validator import validate_references
+from mapproxy.config.loader import ProxyConfiguration, ConfigurationError
+from mapproxy.wsgiapp import MapProxyApp
+
 from shapely.geometry import box
 
+from six.moves.urllib_parse import unquote as url_unquote
+
 from rawes.elastic_exception import ElasticException
+
+LOGGER = logging.getLogger(__name__)
 
 __version__ = 0.1
 
@@ -45,9 +60,9 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
-         'console': {
+        'console': {
             'class': 'logging.StreamHandler',
-         },
+        },
     },
     'loggers': {
         'django': {
@@ -60,54 +75,68 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
+        'mapproxy': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'registry': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
     },
 }
 if not settings.configured:
     settings.configure(**locals())
 
+# When importing serializers, Django requires DEFAULT_INDEX_TABLESPACE.
+# This variable is set after settings.configure().
+from rest_framework import serializers # noqa
+
 PYCSW = {
-        'repository': {
-          'source': 'registry.RegistryRepository',
-          'mappings': 'registry',
-          'database': 'sqlite:////tmp/registry.db',
-          'table': 'records',
-        },
-        'server': {
-            'maxrecords': '100',
-            'pretty_print': 'true',
-            'domaincounts': 'true',
-            'encoding': 'UTF-8',
-            'profiles': 'apiso',
-            'home': '.',
-        },
-        'metadata:main': {
-            'identification_title': 'Registry',
-            'identification_abstract': 'Registry is a CSW catalogue with faceting capabilities via OpenSearch',
-            'identification_keywords': 'registry, pycsw',
-            'identification_keywords_type': 'theme',
-            'identification_fees': 'None',
-            'identification_accessconstraints': 'None',
-            'provider_name': 'Organization Name',
-            'provider_url': '',
-            'contact_name': 'Lastname, Firstname',
-            'contact_position': 'Position Title',
-            'contact_address': 'Mailing Address',
-            'contact_city': 'City',
-            'contact_stateorprovince': 'Administrative Area',
-            'contact_postalcode': 'Zip or Postal Code',
-            'contact_country': 'Country',
-            'contact_phone': '+xx-xxx-xxx-xxxx',
-            'contact_fax': '+xx-xxx-xxx-xxxx',
-            'contact_email': 'Email Address',
-            'contact_url': 'Contact URL',
-            'contact_hours': 'Hours of Service',
-            'contact_instructions': 'During hours of service. Off on weekends.',
-            'contact_role': 'pointOfContact',
-        },
-        'manager': {
-            'transactions': 'true',
-            'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
-        },
+    'repository': {
+        'source': 'registry.RegistryRepository',
+        'mappings': 'registry',
+        'database': 'sqlite:////tmp/registry.db',
+        'table': 'records',
+    },
+    'server': {
+        'maxrecords': '100',
+        'pretty_print': 'true',
+        'domaincounts': 'true',
+        'encoding': 'UTF-8',
+        'profiles': 'apiso',
+        'home': '.',
+    },
+    'metadata:main': {
+        'identification_title': 'Registry',
+        'identification_abstract': 'Registry is a CSW catalogue with faceting capabilities via OpenSearch',
+        'identification_keywords': 'registry, pycsw',
+        'identification_keywords_type': 'theme',
+        'identification_fees': 'None',
+        'identification_accessconstraints': 'None',
+        'provider_name': 'Organization Name',
+        'provider_url': '',
+        'contact_name': 'Lastname, Firstname',
+        'contact_position': 'Position Title',
+        'contact_address': 'Mailing Address',
+        'contact_city': 'City',
+        'contact_stateorprovince': 'Administrative Area',
+        'contact_postalcode': 'Zip or Postal Code',
+        'contact_country': 'Country',
+        'contact_phone': '+xx-xxx-xxx-xxxx',
+        'contact_fax': '+xx-xxx-xxx-xxxx',
+        'contact_email': 'Email Address',
+        'contact_url': 'Contact URL',
+        'contact_hours': 'Hours of Service',
+        'contact_instructions': 'During hours of service. Off on weekends.',
+        'contact_role': 'pointOfContact',
+    },
+    'manager': {
+        'transactions': 'true',
+        'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
+    },
 }
 
 MD_CORE_MODEL = {
@@ -173,6 +202,7 @@ MD_CORE_MODEL = {
     }
 }
 
+
 # TODO: make registry work using CSRF cookie.
 @method_decorator(csrf_exempt, name='dispatch')
 def csw_view(request, catalog=None):
@@ -200,7 +230,7 @@ def csw_view(request, catalog=None):
 
 
 def record_to_dict(record):
-    #TODO: check for correct order.
+    # TODO: check for correct order.
     bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
     record_dict = {
@@ -224,13 +254,16 @@ def record_to_dict(record):
 
     return record_dict
 
+
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
 
-        es =  rawes.Elastic(REGISTRY_SEARCH_URL)
+        es = rawes.Elastic(REGISTRY_SEARCH_URL)
+        # TODO: Figure out a better way to set default mappings.
+        # What if the exception is because of something else?
         try:
             es.get(REGISTRY_INDEX_NAME)
-        except ElasticException as e:
+        except ElasticException:
             mapping = {
                 "mappings": {
                     "layer": {
@@ -266,9 +299,6 @@ class RegistryRepository(Repository):
         super(RegistryRepository, self).insert(*args)
 
 
-from rest_framework import serializers
-
-
 def parse_get_params(request):
     """
     parse all url get params that contains dots in a representation of
@@ -288,101 +318,6 @@ def parse_get_params(request):
             del new_get[key]
 
     return new_get
-
-
-def compute_gap(start, end, time_limit):
-    """
-    Compute a gap that seems reasonable, considering natural time units and limit.
-    # TODO: make it to be reasonable.
-    # TODO: make it to be small unit of time sensitive.
-    :param start: datetime
-    :param end: datetime
-    :param time_limit: gaps count
-    :return: solr's format duration.
-    """
-    if is_range_common_era(start, end):
-        duration = end.get("parsed_datetime") - start.get("parsed_datetime")
-        unit = int(math.ceil(duration.days / float(time_limit)))
-        return "+{0}DAYS".format(unit)
-    else:
-        # at the moment can not do maths with BCE dates.
-        # those dates are relatively big, so 100 years are reasonable in those cases.
-        # TODO: calculate duration on those cases.
-        return "+100YEARS"
-
-
-def is_range_common_era(start, end):
-    """
-    does the range contains CE dates.
-    BCE and CE are not compatible at the moment.
-    :param start:
-    :param end:
-    :return: False if contains BCE dates.
-    """
-    return all([start.get("is_common_era"),
-                end.get("is_common_era")])
-
-
-def request_time_facet(field, time_filter, time_gap, time_limit=100):
-    """
-    time facet query builder
-    :param field: map the query to this field.
-    :param time_limit: Non-0 triggers time/date range faceting. This value is the maximum number of time ranges to
-    return when a.time.gap is unspecified. This is a soft maximum; less will usually be returned.
-    A suggested value is 100.
-    Note that a.time.gap effectively ignores this value.
-    See Solr docs for more details on the query/response format.
-    :param time_filter: From what time range to divide by a.time.gap into intervals.
-    Defaults to q.time and otherwise 90 days.
-    :param time_gap: The consecutive time interval/gap for each time range. Ignores a.time.limit.
-    The format is based on a subset of the ISO-8601 duration format
-    :return: facet.range=manufacturedate_dt&f.manufacturedate_dt.facet.range.start=2006-02-11T15:26:37Z&f.
-    manufacturedate_dt.facet.range.end=2006-02-14T15:26:37Z&f.manufacturedate_dt.facet.range.gap=+1DAY
-    """
-    start, end = parse_datetime_range(time_filter)
-
-    key_range_start = "f.{0}.facet.range.start".format(field)
-    key_range_end = "f.{0}.facet.range.end".format(field)
-    key_range_gap = "f.{0}.facet.range.gap".format(field)
-    key_range_mincount = "f.{0}.facet.mincount".format(field)
-
-    if time_gap:
-        gap = gap_to_sorl(time_gap)
-    else:
-        gap = compute_gap(start, end, time_limit)
-
-    value_range_start = start.get("parsed_datetime")
-    if start.get("is_common_era"):
-        value_range_start = start.get("parsed_datetime").isoformat().replace("+00:00", "") + "Z"
-
-    value_range_end = start.get("parsed_datetime")
-    if end.get("is_common_era"):
-        value_range_end = end.get("parsed_datetime").isoformat().replace("+00:00", "") + "Z"
-
-    value_range_gap = gap
-
-    params = {
-        'facet.range': field,
-        key_range_start: value_range_start,
-        key_range_end: value_range_end,
-        key_range_gap: value_range_gap,
-        key_range_mincount: 1
-    }
-
-    return params
-
-
-def gap_to_sorl(time_gap):
-    """
-    P1D to +1DAY
-    :param time_gap:
-    :return: solr's format duration.
-    """
-    quantity, unit = parse_ISO8601(time_gap)
-    if unit[0] == "WEEKS":
-        return "+{0}DAYS".format(quantity * 7)
-    else:
-        return "+{0}{1}".format(quantity, unit[0])
 
 
 def parse_datetime_range_to_solr(time_filter):
@@ -426,9 +361,6 @@ def parse_datetime_range(time_filter):
     :param time_filter: [2013-03-01 TO 2013-05-01T00:00:00]
     :return: datetime.datetime(2013, 3, 1, 0, 0), datetime.datetime(2013, 5, 1, 0, 0)
     """
-
-    if not time_filter:
-        time_filter = "[* TO *]"
 
     start, end = parse_solr_time_range_as_pair(time_filter)
     start, end = parse_datetime(start), parse_datetime(end)
@@ -506,7 +438,7 @@ def gap_to_elastic(time_gap):
     # elastic units link: https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html#time-units
     elastic_units = {
         "YEARS": 'y',
-        "MONTHS": 'M',
+        "MONTHS": 'm',
         "WEEKS": 'w',
         "DAYS": 'd',
         "HOURS": 'h',
@@ -515,6 +447,7 @@ def gap_to_elastic(time_gap):
     }
     quantity, unit = parse_ISO8601(time_gap)
     interval = "{0}{1}".format(str(quantity), elastic_units[unit[0]])
+
     return interval
 
 
@@ -659,32 +592,26 @@ class SearchSerializer(serializers.Serializer):
         Would be for example: [2013-03-01 TO 2013-04-01T00:00:00] and/or [* TO *]
         Returns a valid sorl value. [2013-03-01T00:00:00Z TO 2013-04-01T00:00:00Z] and/or [* TO *]
         """
-        if value:
-            try:
-                range = parse_datetime_range_to_solr(value)
-                return range
-            except Exception as e:
-                raise serializers.ValidationError(e)
-
-        return value
+        try:
+            range = parse_datetime_range_to_solr(value)
+            return range
+        except Exception as e:
+            raise serializers.ValidationError(e)
 
     def validate_q_geo(self, value):
         """
         Would be for example: [-90,-180 TO 90,180]
         """
-        if value:
-            try:
-                rectangle = parse_geo_box(value)
-                return "[{0},{1} TO {2},{3}]".format(
-                    rectangle.bounds[0],
-                    rectangle.bounds[1],
-                    rectangle.bounds[2],
-                    rectangle.bounds[3],
-                )
-            except Exception as e:
-                raise serializers.ValidationError(e)
-
-        return value
+        try:
+            rectangle = parse_geo_box(value)
+            return "[{0},{1} TO {2},{3}]".format(
+                rectangle.bounds[0],
+                rectangle.bounds[1],
+                rectangle.bounds[2],
+                rectangle.bounds[3],
+            )
+        except Exception as e:
+            raise serializers.ValidationError(e)
 
     def validate_d_docs_page(self, value):
         """
@@ -713,8 +640,6 @@ def elasticsearch(serializer, catalog):
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
-    a_text_limit = serializer.validated_data.get("a_text_limit")
-    a_user_limit = serializer.validated_data.get("a_user_limit")
     a_time_gap = serializer.validated_data.get("a_time_gap")
     a_time_limit = serializer.validated_data.get("a_time_limit")
     original_response = serializer.validated_data.get("original_response")
@@ -735,16 +660,14 @@ def elasticsearch(serializer, catalog):
         # looks ugly but will work on normal ES response for "/".
         ES_VERSION = int(response.json()["version"]["number"][0])
 
-    query_string = {
-        "query_string": {
-            "query": q_text
-        }
-    }
-
     # String searching
     if q_text:
         # Wrapping query string into a query filter.
-
+        query_string = {
+            "query_string": {
+                "query": q_text
+            }
+        }
         if ES_VERSION < 2:
             query_string = {
                 "query": {
@@ -813,7 +736,6 @@ def elasticsearch(serializer, catalog):
         }
         must_array.append(user_searching)
 
-
     dic_query = {
         "query": {
             "bool": {
@@ -822,6 +744,7 @@ def elasticsearch(serializer, catalog):
             }
         }
     }
+
     if ES_VERSION < 2:
         dic_query = {
             "query": {
@@ -922,7 +845,6 @@ def elasticsearch(serializer, catalog):
             a_gap['counts'] = gap_count
             data['a.time'] = a_gap
 
-
     if not int(d_docs_limit) == 0:
         for item in es_response['hits']['hits']:
             # data
@@ -940,11 +862,6 @@ def elasticsearch(serializer, catalog):
     return data
 
 
-class CatalogSerializer(serializers.HyperlinkedModelSerializer):
-    search_url = serializers.CharField(source="get_search_url",
-                                       read_only=True)
-
-
 def search_view(request, catalog):
     request.GET = parse_get_params(request)
     serializer = SearchSerializer(data=request.GET)
@@ -960,10 +877,252 @@ def search_view(request, catalog):
     return HttpResponse(data, status=status)
 
 
+def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
+    """Creates a mapproxy config for a given layer-like object.
+       Compatible with django-registry and GeoNode.
+    """
+    bbox = list(wkt2geom(layer.wkt_geometry))
+
+    # TODO: Check for correct url
+    url = 'http://test.registry.org'
+    # url = str(layer.service.url)
+
+    layer_name = str(layer.title)
+
+    srs = 'EPSG:4326'
+    bbox_srs = 'EPSG:4326'
+    grid_srs = 'EPSG:3857'
+
+    default_source = {
+        'type': 'wms',
+        'coverage': {
+            'bbox': bbox,
+            'srs': srs,
+            'bbox_srs': bbox_srs,
+            'supported_srs': ['EPSG:4326', 'EPSG:900913', 'EPSG:3857'],
+        },
+        'req': {
+            'layers': str(layer.title),
+            'url': url,
+            'transparent': True,
+        },
+    }
+
+    if layer.type == 'ESRI:ArcGIS:MapServer' or layer.type == 'ESRI:ArcGIS:ImageServer':
+        # blindly replace it with /arcgis/
+        url = url.replace("/ArcGIS/rest/", "/arcgis/")
+        # same for uppercase
+        url = url.replace("/arcgis/rest/", "/arcgis/")
+        # and for old versions
+        url = url.replace("ArcX/rest/services", "arcx/services")
+        # in uppercase or lowercase
+        url = url.replace("arcx/rest/services", "arcx/services")
+
+        srs = 'EPSG:3857'
+        bbox_srs = 'EPSG:3857'
+
+        default_source = {
+            'type': 'arcgis',
+            'req': {
+                'url': url,
+                'grid': 'default_grid',
+                'transparent': True,
+            },
+        }
+
+    # A source is the WMS config
+    sources = {
+        'default_source': default_source
+    }
+
+    # A grid is where it will be projects (Mercator in our case)
+    grids = {
+        'default_grid': {
+            'tile_size': [256, 256],
+            'srs': grid_srs,
+            'origin': 'nw',
+        }
+    }
+
+    # A cache that does not store for now. It needs a grid and a source.
+    caches = {
+        'default_cache': {
+            'disable_storage': True,
+            'grids': ['default_grid'],
+            'sources': ['default_source']
+        },
+    }
+
+    # The layer is connected to the cache
+    layers = [
+        {
+            'name': layer_name,
+            'sources': ['default_cache'],
+            'title': str(layer.title),
+        },
+    ]
+
+    # Services expose all layers.
+    # WMS is used for reprojecting
+    # TMS is used for easy tiles
+    # Demo is used to test our installation, may be disabled in final version
+    services = {
+        'wms': {
+            'image_formats': ['image/png'],
+            'md': {
+                'abstract': 'This is the Harvard HyperMap Proxy.',
+                'title': 'Harvard HyperMap Proxy'
+            },
+            'srs': ['EPSG:4326', 'EPSG:3857'],
+            'versions': ['1.1.1']
+        },
+        'wmts': {
+            'restful': True,
+            'restful_template':
+            '/{Layer}/{TileMatrixSet}/{TileMatrix}/{TileCol}/{TileRow}.png',
+        },
+        'tms': {
+            'origin': 'nw',
+        },
+        'demo': None,
+    }
+
+    global_config = {
+        'http': {
+            'ssl_no_cert_checks': True
+        },
+    }
+
+    # Start with a sane configuration using MapProxy's defaults
+    conf_options = load_default_config()
+
+    # Populate a dictionary with custom config changes
+    extra_config = {
+        'caches': caches,
+        'grids': grids,
+        'layers': layers,
+        'services': services,
+        'sources': sources,
+        'globals': global_config,
+    }
+
+    yaml_config = yaml.dump(extra_config, default_flow_style=False)
+    # If you want to test the resulting configuration. Turn on the next
+    # line and use that to generate a yaml config.
+    # assert False
+
+    # Merge both
+    load_config(conf_options, config_dict=extra_config)
+
+    # TODO: Make sure the config is valid.
+    errors, informal_only = validate_options(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+    if not informal_only or (errors and not ignore_warnings):
+        raise ConfigurationError('invalid configuration')
+
+    errors = validate_references(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+
+    conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
+
+    # Create a MapProxy App
+    app = MapProxyApp(conf.configured_services(), conf.base_config)
+
+    return app, yaml_config
+
+
+def environ_from_url(path):
+    """From webob.request
+    TOD: Add License.
+    """
+    scheme = 'http'
+    netloc = 'localhost:80'
+    if path and '?' in path:
+        path_info, query_string = path.split('?', 1)
+        path_info = url_unquote(path_info)
+    else:
+        path_info = url_unquote(path)
+        query_string = ''
+    env = {
+        'REQUEST_METHOD': 'GET',
+        'SCRIPT_NAME': '',
+        'PATH_INFO': path_info or '',
+        'QUERY_STRING': query_string,
+        'SERVER_NAME': netloc.split(':')[0],
+        'SERVER_PORT': netloc.split(':')[1],
+        'HTTP_HOST': netloc,
+        'SERVER_PROTOCOL': 'HTTP/1.0',
+        'wsgi.version': (1, 0),
+        'wsgi.url_scheme': scheme,
+        'wsgi.input': io.BytesIO(),
+        'wsgi.errors': sys.stderr,
+        'wsgi.multithread': False,
+        'wsgi.multiprocess': False,
+        'wsgi.run_once': False,
+    }
+    return env
+
+
+def layer_mapproxy(request, catalog, layer_id, path_info):
+    # Get Layer with matching catalog and primary key
+    repository = RegistryRepository()
+    layer_ids = repository.query_ids([layer_id])
+
+    if len(layer_ids) > 0:
+        layer = layer_ids[0]
+    else:
+        return HttpResponse("Layer with id %s does not exist." % layer_id, status=404)
+
+    # Set up a mapproxy app for this particular layer
+    mp, yaml_config = get_mapproxy(layer)
+
+    query = request.META['QUERY_STRING']
+
+    if len(query) > 0:
+        path_info = path_info + '?' + query
+
+    # TODO: Add params and headers into request.
+    # params = {}
+    # headers = {
+    #     'X-Script-Name': '/{0}/layer/{1}'.format(catalog, layer_id),
+    #     'X-Forwarded-Host': request.META['HTTP_HOST'],
+    #     'HTTP_HOST': request.META['HTTP_HOST'],
+    #     'SERVER_NAME': request.META['SERVER_NAME'],
+    # }
+
+    if path_info == '/config':
+        response = HttpResponse(yaml_config, content_type='text/plain')
+        return response
+
+    captured = []
+    output = []
+
+    def start_response(status, headers, exc_info=None):
+        captured[:] = [status, headers, exc_info]
+        return output.append
+
+    # Get a response from MapProxyAppy as if it was running standalone.
+    environ = environ_from_url(path_info)
+    app_iter = mp(environ, start_response)
+
+    status = int(captured[0].split(' ')[0])
+    # Create a Django response from the MapProxy WSGI response (app_iter).
+    response = HttpResponse(app_iter, status=status)
+    # TODO: Append headers to response, in particular content_type is very important
+    # as some of the responses are images.
+
+    return response
+
+
 urlpatterns = [
     url(r'^$', csw_view),
     url(r'^(?P<catalog>\w+)?$', csw_view),
-    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api")    
+    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
+    url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
+        layer_mapproxy,
+        name='layer_mapproxy'),
 ]
 
 
