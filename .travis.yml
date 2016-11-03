@@ -16,6 +16,7 @@ addons:
       - libgeos-c1
       - libxml2-dev
       - elasticsearch
+      - python-flake8 
 
 services:
   - elasticsearch
