@@ -20,8 +20,6 @@ from django.views.decorators.csrf import csrf_exempt
 
 from distutils.util import strtobool
 
-from rest_framework import serializers
-
 from pycsw import server
 from pycsw.core import config
 from pycsw.core import admin as pycsw_admin
@@ -68,6 +66,10 @@ LOGGING = {
 }
 if not settings.configured:
     settings.configure(**locals())
+
+# When importing serializers, Django requires DEFAULT_INDEX_TABLESPACE.
+# This variable is set after settings.configure().
+from rest_framework import serializers # noqa
 
 PYCSW = {
     'repository': {
