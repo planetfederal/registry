@@ -116,7 +116,7 @@ def get_xml_block(dictionary):
     ) % (dictionary['identifier'],
          dictionary['title'],
          dictionary['creator'],
-         dictionary['type'],    
+         dictionary['type'],
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['identifier'],
          dictionary['identifier'],
