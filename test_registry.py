@@ -33,6 +33,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -43,6 +44,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -53,6 +55,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -63,6 +66,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
 ]
@@ -75,6 +79,7 @@ def get_xml_block(dictionary):
         '    <dc:identifier>%d</dc:identifier>\n'
         '    <dc:title>%s</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
+        '    <dc:type>%s</dc:type>\n'
         '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
         '    <dct:modified>%s</dct:modified>\n'
         '    <dct:abstract>Augue purus vehicula ridiculus eu donec et eget '
@@ -111,6 +116,7 @@ def get_xml_block(dictionary):
     ) % (dictionary['identifier'],
          dictionary['title'],
          dictionary['creator'],
+         dictionary['type'],    
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['identifier'],
          dictionary['identifier'],
@@ -129,6 +135,7 @@ def create_layers_list(records_number):
             'identifier': random.randint(1e6, 1e7),
             'title': 'Random data',
             'creator': 'Random user',
+            'type': 'dataset',
             'modified': datetime(random.randint(1950, 2000),
                                  random.randint(1, 12),
                                  random.randint(1, 28),
@@ -519,6 +526,30 @@ def test_q_time(client):
     assert len(layers_list) == results['a.matchDocs']
     assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
     assert len(results["a.time"]["counts"]) == len(layers_list)
+
+
+def test_mapproxy(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    mapproxy_url = '/{0}/layer/1/config'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+    assert 'text/plain' in response.serialize_headers().decode('utf-8')
+
+    mapproxy_url = '/{0}/layer/1/demo/'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+
+    mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
+                   '&wms_layer=layer_1'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+
+    mapproxy_url = '/{0}/layer/10/demo/'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(mapproxy_url)
+    assert 404 == response.status_code
 
 
 def test_utilities(client):

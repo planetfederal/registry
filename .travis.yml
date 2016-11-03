@@ -10,18 +10,13 @@ python:
 
 addons:
   apt:
-    sources:
-      - elasticsearch-1.7
     packages:
       - libgeos-c1
       - libxml2-dev
-      - elasticsearch
       - python-flake8 
 
-services:
-  - elasticsearch
-
 before_install:
+  - curl -O https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-1.7.5.deb && sudo dpkg -i --force-confnew elasticsearch-1.7.5.deb && sudo service elasticsearch restart
   - sleep 10
 
 install:
@@ -32,7 +27,6 @@ install:
 before_script:
   - python registry.py pycsw -c get_sysprof
   - python registry.py pycsw -c setup_db
-
 
 script:
   - coverage run --source=registry setup.py test
