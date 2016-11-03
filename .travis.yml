@@ -9,21 +9,19 @@ python:
   - "3.5"
 
 env:
-  - VERSION=5.0
-  - VERSION=1.7
+  - VERSION=1.7 ES_URL="https://download.elasticsearch.org/elasticsearch/elasticsearch/" ES_DEB="elasticsearch-1.7.5.deb"
+  - VERSION=5.0 ES_URL="https://artifacts.elastic.co/downloads/elasticsearch/" ES_DEB="elasticsearch-5.0.0.deb"
 
 addons:
   apt:
-    sources:
-      - elasticsearch-$VERSION
     packages:
       - libgeos-c1
       - libxml2-dev
-      - elasticsearch
       - python-flake8
 
-service:
-  - elasticsearch
+before_install:
+  - curl -O $ES_URL$ES_DEB && sudo dpkg -i --force-confnew $ES_DEB && sudo service elasticsearch restart
+  - sleep 5
 
 install:
   - pip install -r requirements.txt
