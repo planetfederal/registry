@@ -10,10 +10,7 @@ from django.test import RequestFactory
 from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
-try:
-    from urlparse import parse_qs
-except ImportError:
-    from urllib.parse import parse_qs
+
 
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
@@ -140,7 +137,7 @@ def create_layers_list(records_number):
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
             'upper_corner_2': random.uniform(0, 180)
-            } for item in range(records_number)
+        } for item in range(records_number)
     ]
 
     return layers

@@ -1,22 +1,26 @@
 import datetime
 import isodate
 import json
-import math
 import os
 import rawes
 import re
 import requests
 import sys
 import getopt
+
 from dateutil import tz
 from dateutil.parser import parse
+
 from django.conf import settings
 from django.core import management
 from django.conf.urls import url
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+
 from distutils.util import strtobool
+
+from rest_framework import serializers
 
 from pycsw import server
 from pycsw.core import config
@@ -45,9 +49,9 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
-         'console': {
+        'console': {
             'class': 'logging.StreamHandler',
-         },
+        },
     },
     'loggers': {
         'django': {
@@ -66,48 +70,48 @@ if not settings.configured:
     settings.configure(**locals())
 
 PYCSW = {
-        'repository': {
-          'source': 'registry.RegistryRepository',
-          'mappings': 'registry',
-          'database': 'sqlite:////tmp/registry.db',
-          'table': 'records',
-        },
-        'server': {
-            'maxrecords': '100',
-            'pretty_print': 'true',
-            'domaincounts': 'true',
-            'encoding': 'UTF-8',
-            'profiles': 'apiso',
-            'home': '.',
-        },
-        'metadata:main': {
-            'identification_title': 'Registry',
-            'identification_abstract': 'Registry is a CSW catalogue with faceting capabilities via OpenSearch',
-            'identification_keywords': 'registry, pycsw',
-            'identification_keywords_type': 'theme',
-            'identification_fees': 'None',
-            'identification_accessconstraints': 'None',
-            'provider_name': 'Organization Name',
-            'provider_url': '',
-            'contact_name': 'Lastname, Firstname',
-            'contact_position': 'Position Title',
-            'contact_address': 'Mailing Address',
-            'contact_city': 'City',
-            'contact_stateorprovince': 'Administrative Area',
-            'contact_postalcode': 'Zip or Postal Code',
-            'contact_country': 'Country',
-            'contact_phone': '+xx-xxx-xxx-xxxx',
-            'contact_fax': '+xx-xxx-xxx-xxxx',
-            'contact_email': 'Email Address',
-            'contact_url': 'Contact URL',
-            'contact_hours': 'Hours of Service',
-            'contact_instructions': 'During hours of service. Off on weekends.',
-            'contact_role': 'pointOfContact',
-        },
-        'manager': {
-            'transactions': 'true',
-            'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
-        },
+    'repository': {
+        'source': 'registry.RegistryRepository',
+        'mappings': 'registry',
+        'database': 'sqlite:////tmp/registry.db',
+        'table': 'records',
+    },
+    'server': {
+        'maxrecords': '100',
+        'pretty_print': 'true',
+        'domaincounts': 'true',
+        'encoding': 'UTF-8',
+        'profiles': 'apiso',
+        'home': '.',
+    },
+    'metadata:main': {
+        'identification_title': 'Registry',
+        'identification_abstract': 'Registry is a CSW catalogue with faceting capabilities via OpenSearch',
+        'identification_keywords': 'registry, pycsw',
+        'identification_keywords_type': 'theme',
+        'identification_fees': 'None',
+        'identification_accessconstraints': 'None',
+        'provider_name': 'Organization Name',
+        'provider_url': '',
+        'contact_name': 'Lastname, Firstname',
+        'contact_position': 'Position Title',
+        'contact_address': 'Mailing Address',
+        'contact_city': 'City',
+        'contact_stateorprovince': 'Administrative Area',
+        'contact_postalcode': 'Zip or Postal Code',
+        'contact_country': 'Country',
+        'contact_phone': '+xx-xxx-xxx-xxxx',
+        'contact_fax': '+xx-xxx-xxx-xxxx',
+        'contact_email': 'Email Address',
+        'contact_url': 'Contact URL',
+        'contact_hours': 'Hours of Service',
+        'contact_instructions': 'During hours of service. Off on weekends.',
+        'contact_role': 'pointOfContact',
+    },
+    'manager': {
+        'transactions': 'true',
+        'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
+    },
 }
 
 MD_CORE_MODEL = {
@@ -173,6 +177,7 @@ MD_CORE_MODEL = {
     }
 }
 
+
 # TODO: make registry work using CSRF cookie.
 @method_decorator(csrf_exempt, name='dispatch')
 def csw_view(request, catalog=None):
@@ -200,7 +205,7 @@ def csw_view(request, catalog=None):
 
 
 def record_to_dict(record):
-    #TODO: check for correct order.
+    # TODO: check for correct order.
     bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
     record_dict = {
@@ -228,10 +233,12 @@ def record_to_dict(record):
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
 
-        es =  rawes.Elastic(REGISTRY_SEARCH_URL)
+        es = rawes.Elastic(REGISTRY_SEARCH_URL)
+        # TODO: Figure out a better way to set default mappings.
+        # What if the exception is because of something else?
         try:
             es.get(REGISTRY_INDEX_NAME)
-        except ElasticException as e:
+        except ElasticException:
             mapping = {
                 "mappings": {
                     "layer": {
@@ -256,9 +263,6 @@ class RegistryRepository(Repository):
         es_dict = record_to_dict(record)
         self.es[REGISTRY_INDEX_NAME]['layer'].post(data=es_dict)
         super(RegistryRepository, self).insert(*args)
-
-
-from rest_framework import serializers
 
 
 def parse_get_params(request):
@@ -560,7 +564,6 @@ class SearchSerializer(serializers.Serializer):
         except Exception as e:
             raise serializers.ValidationError(e)
 
-
     def validate_q_geo(self, value):
         """
         Would be for example: [-90,-180 TO 90,180]
@@ -575,7 +578,6 @@ class SearchSerializer(serializers.Serializer):
             )
         except Exception as e:
             raise serializers.ValidationError(e)
-
 
     def validate_d_docs_page(self, value):
         """
@@ -604,8 +606,6 @@ def elasticsearch(serializer, catalog):
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
-    a_text_limit = serializer.validated_data.get("a_text_limit")
-    a_user_limit = serializer.validated_data.get("a_user_limit")
     a_time_gap = serializer.validated_data.get("a_time_gap")
     a_time_limit = serializer.validated_data.get("a_time_limit")
     original_response = serializer.validated_data.get("original_response")
@@ -625,7 +625,6 @@ def elasticsearch(serializer, catalog):
     if response.ok:
         # looks ugly but will work on normal ES response for "/".
         ES_VERSION = int(response.json()["version"]["number"][0])
-
 
     # String searching
     if q_text:
@@ -703,7 +702,6 @@ def elasticsearch(serializer, catalog):
         }
         must_array.append(user_searching)
 
-
     dic_query = {
         "query": {
             "bool": {
@@ -712,6 +710,7 @@ def elasticsearch(serializer, catalog):
             }
         }
     }
+
     if ES_VERSION < 2:
         dic_query = {
             "query": {
@@ -847,7 +846,7 @@ def search_view(request, catalog):
 urlpatterns = [
     url(r'^$', csw_view),
     url(r'^(?P<catalog>\w+)?$', csw_view),
-    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api")    
+    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
 ]
 
 
