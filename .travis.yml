@@ -21,7 +21,6 @@ addons:
 
 before_install:
   - curl -O $ES_URL$ES_DEB && sudo dpkg -i --force-confnew $ES_DEB && sudo service elasticsearch restart
-  - sleep 5
 
 install:
   - pip install -r requirements.txt
@@ -31,7 +30,6 @@ install:
 before_script:
   - python registry.py pycsw -c get_sysprof
   - python registry.py pycsw -c setup_db
-
 
 script:
   - coverage run --source=registry setup.py test
