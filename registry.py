@@ -254,16 +254,27 @@ def record_to_dict(record):
 
     return record_dict
 
-def es_version(es):
-    return es.get('')['version']['number']
 
-def text_field(version, **kwargs):
-    if version == '5.0.0':
-        field_def = { "type" : "text"  }
-    else:
-        field_def = { "type" : "string", "index" : "analyzed" }
-    field_def.update(kwargs)
-    return field_def
+def get_or_create_catalog(es, version, catalog):
+    #TODO: Find a better way to catch exception in different ES versions.
+    try:
+        es.get(catalog)
+    except ElasticException as e:
+        mapping = es_mapping(version)
+        es.put(catalog, data=mapping)
+
+    return catalog
+
+
+def es_connect(url=REGISTRY_SEARCH_URL):
+    es = rawes.Elastic(url)
+    try:
+        version = es.get('')['version']['number']
+    except requests.exceptions.ConnectionError:
+        return 'Elasticsearch connection error'
+
+    return es, version
+
 
 def es_mapping(version):
     return {
@@ -277,26 +288,30 @@ def es_mapping(version):
                     },
                     "title": text_field(version, copy_to="alltext"),
                     "abstract": text_field(version, copy_to="alltext"),
-                    "alltext" : text_field(version)
+                    "alltext": text_field(version)
                 }
             }
         }
     }
 
+
+def text_field(version, **kwargs):
+    field_def = {"type": "string", "index": "analyzed"}
+    if version == '5.0.0':
+        field_def = {"type": "text"}
+    field_def.update(kwargs)
+    return field_def
+
+
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
+        response = es_connect()
+        if 'error' not in response:
+            es, version = response
+            catalog = get_or_create_catalog(es, version, REGISTRY_INDEX_NAME)
 
-        es = rawes.Elastic(REGISTRY_SEARCH_URL)
-        version = es_version(es)
-        # TODO: Figure out a better way to set default mappings.
-        # What if the exception is because of something else?
-        try:
-            es.get(REGISTRY_INDEX_NAME)
-        except ElasticException:
-            mapping = es_mapping(version)
-            es.put(REGISTRY_INDEX_NAME, data=mapping)
         self.es = es
-
+        self.catalog = catalog
         database = PYCSW['repository']['database']
         return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
 
