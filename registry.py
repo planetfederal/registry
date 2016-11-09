@@ -254,29 +254,46 @@ def record_to_dict(record):
 
     return record_dict
 
+def es_version(es):
+    return es.get('')['version']['number']
+
+def text_field(version, **kwargs):
+    if version == '5.0.0':
+        field_def = { "type" : "text"  }
+    else:
+        field_def = { "type" : "string", "index" : "analyzed" }
+    field_def.update(kwargs)
+    return field_def
+
+def es_mapping(version):
+    return {
+        "mappings": {
+            "layer": {
+                "properties": {
+                    "layer_geoshape": {
+                        "type": "geo_shape",
+                        "tree": "quadtree",
+                        "precision": REGISTRY_MAPPING_PRECISION
+                    },
+                    "title": text_field(version, copy_to="alltext"),
+                    "abstract": text_field(version, copy_to="alltext"),
+                    "alltext" : text_field(version)
+                }
+            }
+        }
+    }
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
 
         es = rawes.Elastic(REGISTRY_SEARCH_URL)
+        version = es_version(es)
         # TODO: Figure out a better way to set default mappings.
         # What if the exception is because of something else?
         try:
             es.get(REGISTRY_INDEX_NAME)
         except ElasticException:
-            mapping = {
-                "mappings": {
-                    "layer": {
-                        "properties": {
-                            "layer_geoshape": {
-                                "type": "geo_shape",
-                                "tree": "quadtree",
-                                "precision": REGISTRY_MAPPING_PRECISION
-                            }
-                        }
-                    }
-                }
-            }
+            mapping = es_mapping(version)
             es.put(REGISTRY_INDEX_NAME, data=mapping)
         self.es = es
 

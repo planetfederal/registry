@@ -27,45 +27,49 @@ default_params = {
 layers_list = [
     {
         'identifier': 1,
-        'title': 'layer_1',
+        'title': 'layer_1 titleterm1',
         'creator': 'user_1',
         'lower_corner_1': -40.0,
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'i': 0,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
         'identifier': 2,
-        'title': 'layer_2',
+        'title': 'layer_2 titleterm2',
         'creator': 'user_1',
         'lower_corner_1': -40.0,
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'i': 1,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
         'identifier': 3,
-        'title': 'layer_3',
+        'title': 'layer_3 titleterm3',
         'creator': 'user_2',
         'lower_corner_1': 40.0,
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
         'identifier': 4,
-        'title': 'layer_4',
+        'title': 'layer_4 titleterm4',
         'creator': 'user_2',
         'lower_corner_1': 40.0,
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
@@ -82,7 +86,7 @@ def get_xml_block(dictionary):
         '    <dc:type>%s</dc:type>\n'
         '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
         '    <dct:modified>%s</dct:modified>\n'
-        '    <dct:abstract>Augue purus vehicula ridiculus eu donec et eget '
+        '    <dct:abstract>Augue purus abstractterm%d vehicula ridiculus eu donec et eget '
         'sit justo. Fames dolor ipsum dignissim aliquet. Proin massa congue '
         'lorem tortor facilisis feugiat vitae ut. Purus justo cum arcu '
         'nascetur etiam hymenaeos volutpat amet. Lacus curae cras quam eni '
@@ -118,6 +122,7 @@ def get_xml_block(dictionary):
          dictionary['creator'],
          dictionary['type'],
          dictionary['modified'].isoformat().split('.')[0],
+         dictionary['i'],
          dictionary['identifier'],
          dictionary['identifier'],
          dictionary['lower_corner_1'],
@@ -143,6 +148,7 @@ def create_layers_list(records_number):
             'lower_corner_1': random.uniform(-90, 0),
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
+            'i': item,
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
     ]
@@ -338,6 +344,22 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
+
+
+def test_q_text_keywords(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    time.sleep(5)
+
+    params = default_params.copy()
+    params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
+    params["d_docs_limit"] = 100
+
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
 
 
 def test_q_text(client):
@@ -543,7 +565,7 @@ def test_mapproxy(client):
     assert 200 == response.status_code
 
     mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
-                   '&wms_layer=layer_1'.format(registry.REGISTRY_INDEX_NAME)
+                   '&wms_layer=layer_1+titleterm1'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
