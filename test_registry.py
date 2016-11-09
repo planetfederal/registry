@@ -27,7 +27,7 @@ default_params = {
 layers_list = [
     {
         'identifier': 1,
-        'title': 'layer_1',
+        'title': 'layer_1 titleterm1',
         'creator': 'user_1',
         'lower_corner_1': -40.0,
         'upper_corner_1': -20.0,
@@ -39,7 +39,7 @@ layers_list = [
     },
     {
         'identifier': 2,
-        'title': 'layer_2',
+        'title': 'layer_2 titleterm2',
         'creator': 'user_1',
         'lower_corner_1': -40.0,
         'upper_corner_1': -20.0,
@@ -51,7 +51,7 @@ layers_list = [
     },
     {
         'identifier': 3,
-        'title': 'layer_3',
+        'title': 'layer_3 titleterm3',
         'creator': 'user_2',
         'lower_corner_1': 40.0,
         'upper_corner_1': 20.0,
@@ -63,7 +63,7 @@ layers_list = [
     },
     {
         'identifier': 4,
-        'title': 'layer_4',
+        'title': 'layer_4 titleterm4',
         'creator': 'user_2',
         'lower_corner_1': 40.0,
         'upper_corner_1': 20.0,
@@ -81,7 +81,7 @@ def get_xml_block(dictionary):
     xml_block = (
         '  <csw:Record>\n'
         '    <dc:identifier>%d</dc:identifier>\n'
-        '    <dc:title>%s titleterm%d</dc:title>\n'
+        '    <dc:title>%s</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
         '    <dc:type>%s</dc:type>\n'
         '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
@@ -118,7 +118,7 @@ def get_xml_block(dictionary):
         '    </ows:BoundingBox>\n'
         '    </csw:Record>\n'
     ) % (dictionary['identifier'],
-         dictionary['title'], dictionary['i'],
+         dictionary['title'],
          dictionary['creator'],
          dictionary['type'],
          dictionary['modified'].isoformat().split('.')[0],
@@ -378,7 +378,7 @@ def test_q_text(client):
     assert 1 == results['a.matchDocs']
 
     for doc in results.get("d.docs", []):
-        assert layers_list[0]['title'] + ' titleterm0' == doc['title']
+        assert layers_list[0]['title'] == doc['title']
 
 
 def test_q_user(client):
@@ -565,7 +565,7 @@ def test_mapproxy(client):
     assert 200 == response.status_code
 
     mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
-                   '&wms_layer=layer_1'.format(registry.REGISTRY_INDEX_NAME)
+                   '&wms_layer=layer_1+titleterm1'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
