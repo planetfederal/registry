@@ -305,20 +305,22 @@ def text_field(version, **kwargs):
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
+        self.es_status = 400
         response = es_connect()
+        catalog = REGISTRY_INDEX_NAME
         if 'error' not in response:
-            es, version = response
-            catalog = get_or_create_catalog(es, version, REGISTRY_INDEX_NAME)
+            self.es_status = 200
+            self.es, version = response
+            self.catalog = get_or_create_catalog(self.es, version, catalog)
 
-        self.es = es
-        self.catalog = catalog
         database = PYCSW['repository']['database']
         return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
 
     def insert(self, *args, **kwargs):
-        record = args[0]
-        es_dict = record_to_dict(record)
-        self.es[REGISTRY_INDEX_NAME]['layer'].post(data=es_dict)
+        if self.es_status == 200:
+            record = args[0]
+            es_dict = record_to_dict(record)
+            self.es[self.catalog]['layer'].post(data=es_dict)
         super(RegistryRepository, self).insert(*args)
 
 
