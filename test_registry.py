@@ -236,6 +236,9 @@ def test_single_transaction(client):
     assert 'total' in search_response['hits']
     assert 1 == search_response['hits']['total']
 
+    wrong_url = 'http://localhost:9500'
+    assert 'connection error' in registry.es_connect(wrong_url)
+
 
 def test_multiple_transactions(client):
     '''
