@@ -1,0 +1,11 @@
+version: '2'
+services:
+  registry:
+    build: .
+    ports:
+      - "8000:8000"
+
+  elasticsearch:
+    image: terranodo/elasticsearch
+    ports:
+      - "9200:9200"
