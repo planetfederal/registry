@@ -43,7 +43,8 @@ Assuming ubuntu 14.04 OS.
 3. Installation of registry modules
 
 	```sh
-	pip install -e .
+	pip install -r requirements.txt
+        pip install -e .
 	```
 
 4. Configure pycsw database
