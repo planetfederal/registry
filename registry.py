@@ -255,11 +255,11 @@ def record_to_dict(record):
     return record_dict
 
 
-def get_or_create_catalog(es, version, catalog):
-    #TODO: Find a better way to catch exception in different ES versions.
+def get_or_create_index(es, version, catalog):
+    # TODO: Find a better way to catch exception in different ES versions.
     try:
         es.get(catalog)
-    except ElasticException as e:
+    except ElasticException:
         mapping = es_mapping(version)
         es.put(catalog, data=mapping)
 
@@ -311,7 +311,7 @@ class RegistryRepository(Repository):
         if 'error' not in response:
             self.es_status = 200
             self.es, version = response
-            self.catalog = get_or_create_catalog(self.es, version, catalog)
+            self.catalog = get_or_create_index(self.es, version, catalog)
 
         database = PYCSW['repository']['database']
         return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
@@ -1141,10 +1141,52 @@ def layer_mapproxy(request, catalog, layer_id, path_info):
     return response
 
 
+def insert_catalog_view(request, catalog):
+    es_response = es_connect()
+    message = 'ElasticSearch connection error'
+    if 'error' not in es_response:
+        es, version = es_response
+        catalog = get_or_create_index(es, version, catalog)
+        message = 'Catalog {0} created succesfully'.format(catalog)
+    response = HttpResponse(message, status=200)
+
+    return response
+
+
+def create_response_dict(catalog_id, catalog):
+    dictionary = {
+        'id': catalog_id,
+        'slug': catalog,
+        'name': catalog,
+        'url': None,
+        'search_url': '/{0}/api/'.format(catalog)
+    }
+
+    return dictionary
+
+
+def list_catalogs_view(request):
+    es_response = es_connect()
+    message = 'ElasticSearch connection error'
+    if 'error' not in es_response:
+        es, _ = es_response
+        list_catalogs = es.get('_aliases').keys()
+        response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
+        message = json.dumps(response_list)
+
+        if len(list_catalogs) == 0:
+            message = 'List of catalogs is empty!'
+    response = HttpResponse(message, status=200)
+
+    return response
+
+
 urlpatterns = [
     url(r'^$', csw_view),
     url(r'^(?P<catalog>\w+)?$', csw_view),
+    url(r'^catalogs/$', list_catalogs_view, name="list_catalogs"),
     url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
+    url(r'^(?P<catalog>[-\w]+)/insert$', insert_catalog_view, name="insert_catalog"),
     url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
         layer_mapproxy,
         name='layer_mapproxy'),
