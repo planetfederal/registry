@@ -57,6 +57,11 @@ Assuming ubuntu 14.04 OS.
 Usage
 =====
 
+0. Run the test suite to verify everything is okay and install some dependencies like pytest for generating fake data.
+       ```sh
+       python setup.py test
+       ```
+
 1. Run the server. The server will listen in port 8000
 	```sh
 	python registry.py runserver
