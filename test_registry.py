@@ -196,25 +196,22 @@ def get_number_records(request):
     return int(search_results.attrib['numberOfRecordsMatched'])
 
 
-@pytest.yield_fixture(autouse=True)
+@pytest.yield_fixture
 def clear_records():
     '''
     Function that clears records for both database and search backend.
     '''
     registry.REGISTRY_INDEX_NAME = 'test'
+    yield
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.delete(registry.REGISTRY_INDEX_NAME)
     context = config.StaticContext()
     delete_records(context,
                    registry.PYCSW['repository']['database'],
                    registry.PYCSW['repository']['table'])
-    yield
-    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    es_client.delete(registry.REGISTRY_INDEX_NAME)
-    delete_records(context,
-                   registry.PYCSW['repository']['database'],
-                   registry.PYCSW['repository']['table'])
 
 
-def test_single_transaction(client):
+def test_single_transaction(client, clear_records):
     '''
     Test single csw transaction.
     '''
@@ -240,7 +237,7 @@ def test_single_transaction(client):
     assert 'connection error' in registry.es_connect(wrong_url)
 
 
-def test_multiple_transactions(client):
+def test_multiple_transactions(client, clear_records):
     '''
     Test multiple csw transactions.
     '''
@@ -265,7 +262,7 @@ def test_multiple_transactions(client):
     assert records_number == search_response['hits']['total']
 
 
-def test_parse_params(client):
+def test_parse_params(client, clear_records):
     payload = construct_payload(records_number=1)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
@@ -291,7 +288,31 @@ def test_parse_params(client):
     assert False in assert_dots
 
 
-def test_search_api(client):
+def test_catalogs(client):
+    catalogs = ['catalog_1', 'catalog_2', 'catalog_3']
+    for catalog in catalogs:
+        response = client.get('/{0}/insert'.format(catalog))
+        assert 200 == response.status_code
+        assert 'Catalog {0} created succesfully'.format(catalog) == response.content.decode('utf-8')
+
+    time.sleep(5)
+    # List indices.
+    response = client.get('/catalogs/')
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(catalogs) == len(results)
+
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    for catalog in catalogs:
+        es_client.delete(catalog)
+
+    # Test empty list of catalogs.
+    response = client.get('/catalogs/')
+    assert 200 == response.status_code
+    assert 'empty' in response.content.decode('utf-8')
+
+
+def test_search_api(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -349,7 +370,7 @@ def test_search_api(client):
     assert 'a.matchDocs' not in results
 
 
-def test_q_text_keywords(client):
+def test_q_text_keywords(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -365,7 +386,7 @@ def test_q_text_keywords(client):
     assert 2 == results['a.matchDocs']
 
 
-def test_q_text(client):
+def test_q_text(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -384,7 +405,7 @@ def test_q_text(client):
         assert layers_list[0]['title'] == doc['title']
 
 
-def test_q_user(client):
+def test_q_user(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -404,7 +425,7 @@ def test_q_user(client):
         assert query_user == doc['layer_originator']
 
 
-def test_q_geo(client):
+def test_q_geo(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -448,7 +469,7 @@ def test_q_geo(client):
     assert 400 == response.status_code
 
 
-def test_q_time(client):
+def test_q_time(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -553,7 +574,7 @@ def test_q_time(client):
     assert len(results["a.time"]["counts"]) == len(layers_list)
 
 
-def test_mapproxy(client):
+def test_mapproxy(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     time.sleep(5)
@@ -577,7 +598,7 @@ def test_mapproxy(client):
     assert 404 == response.status_code
 
 
-def test_utilities(client):
+def test_utilities(client, clear_records):
     payload = construct_payload(records_number=1)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
