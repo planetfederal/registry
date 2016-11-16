@@ -234,7 +234,7 @@ def record_to_dict(record):
     bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
     record_dict = {
-        'title': record.title,
+        'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
         'abstract': record.abstract,
         'bbox': bbox,
         'min_x': min_x,
@@ -320,7 +320,12 @@ class RegistryRepository(Repository):
         if self.es_status == 200:
             record = args[0]
             es_dict = record_to_dict(record)
-            self.es[self.catalog]['layer'].post(data=es_dict)
+            # TODO: Do not index wrong bounding boxes.
+            try:
+                self.es[self.catalog]['layer'].post(data=es_dict)
+                print("Record {0} indexed".format(es_dict['title']))
+            except ElasticException as e:
+                print(e)
         super(RegistryRepository, self).insert(*args)
 
 
@@ -1147,7 +1152,7 @@ def insert_catalog_view(request, catalog):
     if 'error' not in es_response:
         es, version = es_response
         catalog = get_or_create_index(es, version, catalog)
-        message = 'Catalog {0} created succesfully'.format(catalog)
+        message = "Catalog {0} created succesfully".format(catalog)
     response = HttpResponse(message, status=200)
 
     return response
