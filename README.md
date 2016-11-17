@@ -43,7 +43,8 @@ Assuming ubuntu 14.04 OS.
 3. Installation of registry modules
 
 	```sh
-	pip install -e .
+	pip install -r requirements.txt
+        pip install -e .
 	```
 
 4. Configure pycsw database
@@ -55,6 +56,11 @@ Assuming ubuntu 14.04 OS.
 
 Usage
 =====
+
+0. Run the test suite to verify everything is okay and install some dependencies like pytest for generating fake data.
+       ```sh
+       python setup.py test
+       ```
 
 1. Run the server. The server will listen in port 8000
 	```sh
