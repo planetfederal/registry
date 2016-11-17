@@ -6,7 +6,7 @@ __Note:__ This example is for the commercial pivotal cloud foundry using the `se
 + initially create the elasticsearch service (if it doesnt exist)
 
 ```bash
-cf create-service searchly starter registry_es
+cf create-service searchly starter es-dev
 ```
 
 + push your app to cloudfoundry
@@ -19,7 +19,7 @@ applications:
 ```
 
 ```bash
-cf push -f cf/commercial_test_pcf.yml
+cf push -f cf/pcf_dev.yml
 ```
 
 + access your app at {app_name}.cfapps.io

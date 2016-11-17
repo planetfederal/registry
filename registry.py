@@ -55,9 +55,10 @@ REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 
 # cloudfoundry additions
-vcap_config = json.loads(os.environ.get('VCAP_SERVICES', None))
-if 'searchly' in vcap_config:
-    REGISTRY_SEARCH_URL = vcap_config['searchly'][0]['credentials']['sslUri']
+if 'VCAP_SERVICES' in os.environ:
+    vcap_config = json.loads(os.environ.get('VCAP_SERVICES', None))
+    if 'searchly' in vcap_config:
+        REGISTRY_SEARCH_URL = vcap_config['searchly'][0]['credentials']['sslUri']
 
 TIMEZONE = tz.gettz('America/New_York')
 
@@ -261,7 +262,7 @@ def record_to_dict(record):
 
 
 def get_or_create_catalog(es, version, catalog):
-    #TODO: Find a better way to catch exception in different ES versions.
+    # TODO: Find a better way to catch exception in different ES versions.
     try:
         es.get(catalog)
     except ElasticException as e:
