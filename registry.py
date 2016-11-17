@@ -54,6 +54,12 @@ REGISTRY_INDEX_NAME = os.getenv('REGISTRY_INDEX_NAME', 'registry')
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 
+# cloudfoundry additions
+if 'VCAP_SERVICES' in os.environ: # noqa
+    vcap_config = json.loads(os.environ.get('VCAP_SERVICES', None)) # noqa
+    if 'searchly' in vcap_config: # noqa
+        REGISTRY_SEARCH_URL = vcap_config['searchly'][0]['credentials']['sslUri'] # noqa
+
 TIMEZONE = tz.gettz('America/New_York')
 
 LOGGING = {
