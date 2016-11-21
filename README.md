@@ -86,6 +86,8 @@ Usage
 You should see the indexed information. The ```a.matchDocs``` value refers
 to the number of layers returned by the search api.
 
+**Note.** In registry, is possible to read all catalogs and layers. However, the catalog slug is necessary in order to add layers.
+
 
 Testing
 =======

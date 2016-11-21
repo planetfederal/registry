@@ -11,7 +11,7 @@ from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
 
-
+catalog_slug = 'test'
 get_records_url = '?service=CSW&version=2.0.2&request=' \
                   'GetRecords&typenames=csw:Record&elementsetname=full' \
 
@@ -201,10 +201,9 @@ def clear_records():
     '''
     Function that clears records for both database and search backend.
     '''
-    registry.REGISTRY_INDEX_NAME = 'test'
     yield
     es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    es_client.delete(registry.REGISTRY_INDEX_NAME)
+    es_client.delete(catalog_slug)
     context = config.StaticContext()
     delete_records(context,
                    registry.PYCSW['repository']['database'],
@@ -216,7 +215,7 @@ def test_single_transaction(client, clear_records):
     Test single csw transaction.
     '''
     payload = construct_payload(records_number=1)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
     response = client.get(get_records_url)
@@ -244,7 +243,7 @@ def test_multiple_transactions(client, clear_records):
     records_number = 10
     payload = construct_payload(records_number=records_number)
 
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
     response = client.get(get_records_url)
@@ -264,7 +263,7 @@ def test_multiple_transactions(client, clear_records):
 
 def test_parse_params(client, clear_records):
     payload = construct_payload(records_number=1)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
     time.sleep(2)
 
@@ -276,7 +275,7 @@ def test_parse_params(client, clear_records):
         "d.docs.sort": "score"
     }
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     response = client.get(api_url, params_test)
     assert 200 == response.status_code
 
@@ -314,10 +313,10 @@ def test_catalogs(client):
 
 def test_search_api(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     response = client.get(api_url, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -372,14 +371,14 @@ def test_search_api(client, clear_records):
 
 def test_q_text_keywords(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
     params = default_params.copy()
     params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
     params["d_docs_limit"] = 100
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -388,14 +387,14 @@ def test_q_text_keywords(client, clear_records):
 
 def test_q_text(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
     params = default_params.copy()
     params["q_text"] = "title:\"{0}\"".format(layers_list[0]['title'])
     params["d_docs_limit"] = 100
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -407,7 +406,7 @@ def test_q_text(client, clear_records):
 
 def test_q_user(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
     params = default_params.copy()
@@ -415,7 +414,7 @@ def test_q_user(client, clear_records):
     params["q_user"] = query_user
     params["d_docs_limit"] = 100
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -427,10 +426,10 @@ def test_q_user(client, clear_records):
 
 def test_q_geo(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
@@ -471,10 +470,10 @@ def test_q_geo(client, clear_records):
 
 def test_q_time(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    api_url = '/{0}/api/'.format(catalog_slug)
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
@@ -576,31 +575,31 @@ def test_q_time(client, clear_records):
 
 def test_mapproxy(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     time.sleep(5)
 
-    mapproxy_url = '/{0}/layer/1/config'.format(registry.REGISTRY_INDEX_NAME)
+    mapproxy_url = '/{0}/layer/1/config'.format(catalog_slug)
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
     assert 'text/plain' in response.serialize_headers().decode('utf-8')
 
-    mapproxy_url = '/{0}/layer/1/demo/'.format(registry.REGISTRY_INDEX_NAME)
+    mapproxy_url = '/{0}/layer/1/demo/'.format(catalog_slug)
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
     mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
-                   '&wms_layer=layer_1+titleterm1'.format(registry.REGISTRY_INDEX_NAME)
+                   '&wms_layer=layer_1+titleterm1'.format(catalog_slug)
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
-    mapproxy_url = '/{0}/layer/10/demo/'.format(registry.REGISTRY_INDEX_NAME)
+    mapproxy_url = '/{0}/layer/10/demo/'.format(catalog_slug)
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
 
 
 def test_utilities(client, clear_records):
     payload = construct_payload(records_number=1)
-    response = client.post('/', payload, content_type='text/xml')
+    response = client.post('/{0}'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
     datetime_range = "[2013-03-01 TO 2014-05-02T23:00:00]"

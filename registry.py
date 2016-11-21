@@ -50,7 +50,6 @@ ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
 
-REGISTRY_INDEX_NAME = os.getenv('REGISTRY_INDEX_NAME', 'registry')
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 
@@ -140,7 +139,7 @@ PYCSW = {
         'contact_role': 'pointOfContact',
     },
     'manager': {
-        'transactions': 'true',
+        'transactions': 'false',
         'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
     },
 }
@@ -215,6 +214,7 @@ def csw_view(request, catalog=None):
     """CSW dispatch view.
        Wraps the WSGI call and allows us to tweak any django settings.
     """
+
     env = request.META.copy()
     env.update({'local.app_root': os.path.dirname(__file__),
                 'REQUEST_URI': request.build_absolute_uri()})
@@ -223,6 +223,10 @@ def csw_view(request, catalog=None):
     url = request.build_absolute_uri()
     PYCSW['server']['url'] = url
     PYCSW['metadata:main']['provider_url'] = url
+
+    # Enable CSW-T when a catalog is defined in the
+    if catalog and request.META['REQUEST_METHOD'] == 'POST':
+        PYCSW['manager']['transactions'] = 'true'
 
     csw = server.Csw(PYCSW, env)
     status, content = csw.dispatch_wsgi()
@@ -310,15 +314,10 @@ def text_field(version, **kwargs):
 
 
 def parse_catalog_from_url(url=None):
-    catalog_slug = REGISTRY_INDEX_NAME
-    if not url:
-        return catalog_slug
-
-    parsed_url = urlparse(url)
-    url_path = parsed_url.path.replace('/', '')
-
-    if url_path != '':
-        catalog_slug = url_path
+    catalog_slug = ''
+    if url:
+        parsed_url = urlparse(url)
+        catalog_slug = parsed_url.path.replace('/', '')
 
     return catalog_slug
 
