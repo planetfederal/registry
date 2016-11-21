@@ -3,7 +3,7 @@
 --extra-index-url https://testpypi.python.org/pypi
 
 # pycsw
-pycsw==2.1-dev-20161019
+pycsw==2.1.dev20161019
 SQLAlchemy==1.1.2
 
 # django
