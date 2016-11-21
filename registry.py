@@ -37,7 +37,7 @@ from mapproxy.wsgiapp import MapProxyApp
 
 from shapely.geometry import box
 
-from six.moves.urllib_parse import unquote as url_unquote
+from six.moves.urllib_parse import urlparse, unquote as url_unquote
 
 from rawes.elastic_exception import ElasticException
 
@@ -309,11 +309,29 @@ def text_field(version, **kwargs):
     return field_def
 
 
+def parse_catalog_from_url(url=None):
+    catalog_slug = REGISTRY_INDEX_NAME
+    if not url:
+        return catalog_slug
+
+    parsed_url = urlparse(url)
+    url_path = parsed_url.path.replace('/', '')
+
+    if url_path != '':
+        catalog_slug = url_path
+
+    return catalog_slug
+
+
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
+        url = None
+        if args:
+            url = args[0].url
+        catalog = parse_catalog_from_url(url)
+
         self.es_status = 400
         response = es_connect()
-        catalog = REGISTRY_INDEX_NAME
         if 'error' not in response:
             self.es_status = 200
             self.es, version = response
@@ -885,12 +903,8 @@ def elasticsearch(serializer, catalog):
         for item in es_response['hits']['hits']:
             # data
             temp = item['_source']['abstract']
-            temp = temp.replace(u'\u201c', "\"")
-            temp = temp.replace(u'\u201d', "\"")
-            temp = temp.replace('"', "\"")
-            temp = temp.replace("'", "\'")
-            temp = temp.replace(u'\u2019', "\'")
-            item['_source']['abstract'] = temp
+            if temp:
+                item['_source']['abstract'] = temp.encode('ascii', 'ignore').decode('utf-8')
             docs.append(item['_source'])
 
     data["d.docs"] = docs
