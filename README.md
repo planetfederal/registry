@@ -74,7 +74,7 @@ Usage
 
 3. Add records into the database and search engine via CSW-T
 	```sh
-	curl -XPOST -d @payload.xml  http://localhost:8000/
+	curl -XPOST -d @payload.xml  http://localhost:8000/<catalog_slug>
 	```
 
 4. Search api endpoint.
