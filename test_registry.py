@@ -405,7 +405,7 @@ def test_q_text(client, clear_records):
         assert layers_list[0]['title'] == doc['title']
 
 
-def test_q_text_fields(client):
+def test_q_text_fields(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
@@ -437,7 +437,7 @@ def test_q_text_fields(client):
     assert 1 == results['a.matchDocs']
 
 
-def test_q_text_fields_boost(client):
+def test_q_text_fields_boost(client, clear_records):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
