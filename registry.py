@@ -569,6 +569,13 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Constrains docs by keyword search query."
     )
+    q_text_fields = serializers.CharField(
+        required=False,
+        help_text="Constrains text search to a list of fields, optionally specifying a boost. "
+                  "Fields are separated by the ':' character, and boosts are a decimal following the '^' character. "
+                  "Example: title^3.0:abstract^1.0:publisher:creator",
+        default="title^5.0,abstract^2.0"
+    )
     q_user = serializers.CharField(
         required=False,
         help_text="Constrains docs by matching exactly a certain user."
@@ -688,6 +695,7 @@ def elasticsearch(serializer, catalog):
     search_engine_endpoint = serializer.validated_data.get("search_engine_endpoint")
     search_engine_endpoint = "{0}/{1}/_search".format(search_engine_endpoint, catalog)
     q_text = serializer.validated_data.get("q_text")
+    q_text_fields = serializer.validated_data.get("q_text_fields").split(',')
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
@@ -719,14 +727,18 @@ def elasticsearch(serializer, catalog):
         # Wrapping query string into a query filter.
         query_string = {
             "query_string": {
-                "query": q_text
+                "fields": q_text_fields,
+                "query": q_text,
+                "use_dis_max": "true"
             }
         }
         if ES_VERSION < 2:
             query_string = {
                 "query": {
                     "query_string": {
-                        "query": q_text
+                        "fields": q_text_fields,
+                        "query": q_text,
+                        "use_dis_max": "true"
                     }
                 }
             }
