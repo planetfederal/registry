@@ -446,7 +446,7 @@ def test_q_text_fields_boost(client, clear_records):
     # Boosting alltext will make it score higher, despite lower tf*idf
     params = default_params.copy()
     params["q_text"] = "{0} {1} {2}".format("user_1", "layer_4", "titleterm4")
-    params["q_text_fields"] = "{0},{1}".format("alltext^5.0", "layer_originator")
+    params["q_text_fields"] = "{0},{1}".format("alltext^5.0", "layer_originator^0.1")
     params["d_docs_limit"] = 100
 
     api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
@@ -459,7 +459,7 @@ def test_q_text_fields_boost(client, clear_records):
     assert layers_list[1]['creator'] == results.get("d.docs", [])[2]['layer_originator']
 
     # Boosting layer_originator will move the 4th doc to the last in score
-    params["q_text_fields"] = "{0},{1}".format("alltext", "layer_originator^5.0")
+    params["q_text_fields"] = "{0},{1}".format("alltext^0.1", "layer_originator^5.0")
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
