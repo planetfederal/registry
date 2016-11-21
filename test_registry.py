@@ -384,6 +384,70 @@ def test_q_text(client):
         assert layers_list[0]['title'] == doc['title']
 
 
+def test_q_text_fields(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    assert 200 == response.status_code
+    time.sleep(5)
+
+    params = default_params.copy()
+    params["q_text"] = "{0}".format("titleterm1")
+    params["q_text_fields"] = "{0}".format("title")
+    params["d_docs_limit"] = 100
+
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    params["q_text"] = "{0}".format("volutpat")
+    params["q_text_fields"] = "{0}".format("abstract")
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 4 == results['a.matchDocs']
+
+    params["q_text"] = "{0} {1}".format("volutpat", "titleterm1")
+    params["q_text_fields"] = "{0},{1}".format("title", "creator")
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+
+def test_q_text_fields_boost(client):
+    payload = construct_payload(layers_list=layers_list)
+    response = client.post('/', payload, content_type='text/xml')
+    assert 200 == response.status_code
+    time.sleep(5)
+
+    # Boosting alltext will make it score higher, despite lower tf*idf
+    params = default_params.copy()
+    params["q_text"] = "{0} {1} {2}".format("user_1", "layer_4", "titleterm4")
+    params["q_text_fields"] = "{0},{1}".format("alltext^5.0", "layer_originator")
+    params["d_docs_limit"] = 100
+
+    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 3 == results['a.matchDocs']
+    assert layers_list[3]['title'] == results.get("d.docs", [])[0]['title']
+    assert layers_list[0]['creator'] == results.get("d.docs", [])[1]['layer_originator']
+    assert layers_list[1]['creator'] == results.get("d.docs", [])[2]['layer_originator']
+
+    # Boosting layer_originator will move the 4th doc to the last in score
+    params["q_text_fields"] = "{0},{1}".format("alltext", "layer_originator^5.0")
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 3 == results['a.matchDocs']
+    assert layers_list[3]['title'] == results.get("d.docs", [])[2]['title']
+    assert layers_list[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
+    assert layers_list[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
+
+
 def test_q_user(client):
     payload = construct_payload(layers_list=layers_list)
     response = client.post('/', payload, content_type='text/xml')
