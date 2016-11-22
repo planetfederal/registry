@@ -141,4 +141,4 @@ Features
  - [x] Mirror information to Elasticsearch for faster searches
  - [x] OpenSearch based API to enable the use of facets on different fields (extending CSW standard).
  - [x] MapProxy support for easy TMS/WMTS access to any kind of resource
- - [ ] Multi-catalog support.
+ - [x] Multi-catalog support.
