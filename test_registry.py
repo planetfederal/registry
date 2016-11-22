@@ -304,7 +304,7 @@ def test_catalogs(client):
 
     time.sleep(5)
     # List indices.
-    response = client.get('/catalogs/')
+    response = client.get('/registry/api/catalogs/')
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(catalogs) == len(results)
@@ -313,7 +313,7 @@ def test_catalogs(client):
         client.delete('/{0}'.format(catalog))
 
     # Test empty list of catalogs.
-    response = client.get('/catalogs/')
+    response = client.get('/registry/api/catalogs/')
     assert 200 == response.status_code
     assert 'empty' in response.content.decode('utf-8')
 

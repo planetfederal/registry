@@ -1235,7 +1235,7 @@ def list_catalogs_view(request):
 urlpatterns = [
     url(r'^$', csw_view),
     url(r'^(?P<catalog>\w+)?$', csw_view),
-    url(r'^catalogs/$', list_catalogs_view, name="list_catalogs"),
+    url(r'^registry/api/catalogs/$', list_catalogs_view, name="list_catalogs"),
     url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
     url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
         layer_mapproxy,
