@@ -349,21 +349,19 @@ def text_field(version, **kwargs):
     return field_def
 
 
-def parse_catalog_from_url(url=None):
-    catalog_slug = ''
-    if url:
-        parsed_url = urlparse(url)
-        catalog_slug = parsed_url.path.replace('/', '')
+def parse_catalog_from_url(url):
+    parsed_url = urlparse(url)
+    catalog_slug = parsed_url.path.split('/')[2]
 
     return catalog_slug
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        url = None
-        if args:
+        if args and urlparse(args[0].url).path != '/csw':
             url = args[0].url
-        self.catalog = parse_catalog_from_url(url)
+            self.catalog = parse_catalog_from_url(url)
+
         try:
             self.es, self.version = es_connect()
             self.es_status = 200
@@ -724,8 +722,10 @@ def elasticsearch(serializer, catalog):
     :return:
     """
 
-    search_engine_endpoint = serializer.validated_data.get("search_engine_endpoint")
-    search_engine_endpoint = "{0}/{1}/_search".format(search_engine_endpoint, catalog)
+    search_endpoint = serializer.validated_data.get("search_engine_endpoint")
+    search_engine_endpoint = "{0}/_search".format(search_endpoint)
+    if catalog:
+        search_engine_endpoint = "{0}/{1}/_search".format(search_endpoint, catalog)
     q_text = serializer.validated_data.get("q_text")
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
@@ -951,7 +951,7 @@ def elasticsearch(serializer, catalog):
     return data
 
 
-def search_view(request, catalog):
+def search_view(request, catalog=None):
     request.GET = parse_get_params(request)
     serializer = SearchSerializer(data=request.GET)
     try:
@@ -972,9 +972,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     """
     bbox = list(wkt2geom(layer.wkt_geometry))
 
-    # TODO: Check for correct url
-    url = 'http://test.registry.org'
-    # url = str(layer.service.url)
+    url = str(layer.source)
 
     layer_name = str(layer.title)
 
@@ -1154,15 +1152,90 @@ def environ_from_url(path):
     return env
 
 
-def layer_mapproxy(request, catalog, layer_id, path_info):
+def get_path_info_params(yaml_text):
+    sources = yaml_text['sources']['default_source']
+    bbox_req = '-180,-90,180,90'
+    if 'coverage' in sources:
+        coverage = yaml_text['sources']['default_source']['coverage']
+        bbox_req = ','.join([str(f) for f in coverage['bbox']])
+
+    if 'layers'in yaml_text:
+        lay_name = yaml_text['layers'][0]['name']
+
+    return bbox_req, lay_name
+
+
+def layer_from_csw(layer_uuid):
     # Get Layer with matching catalog and primary key
     repository = RegistryRepository()
-    layer_ids = repository.query_ids([layer_id])
+    layer_ids = repository.query_ids([layer_uuid])
 
     if len(layer_ids) > 0:
         layer = layer_ids[0]
     else:
-        return HttpResponse("Layer with id %s does not exist." % layer_id, status=404)
+        raise Exception("Layer with uuid {0} does not exist.".format(layer_uuid))
+
+    return layer
+
+
+def layer_yml_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+
+    # Set up a mapproxy app for this particular layer
+    _, yaml_config = get_mapproxy(layer)
+
+    response = HttpResponse(yaml_config, content_type='text/plain')
+
+    return response
+
+
+def layer_xml_view(request, layer_uuid):
+    query_string = ('service=CSW&version=3.0.0&request=GetRecordById&elementsetname=full&'
+                    'resulttype=results&id={0}'.format(layer_uuid))
+    request.META['QUERY_STRING'] = query_string
+    response = csw_view(request)
+
+    return response
+
+
+def layer_png_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+
+    # Set up a mapproxy app for this particular layer
+    mp, yaml_config = get_mapproxy(layer)
+    yaml_text = yaml.load(yaml_config)
+
+    captured = []
+    output = []
+    bbox_req, lay_name = get_path_info_params(yaml_text)
+
+    path_info = ('/service?LAYERS={0}&FORMAT=image%2Fpng&SRS=EPSG%3A4326'
+                 '&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&TRANSPARENT=TRUE&SERVICE=WMS&VERSION=1.1.1&'
+                 'REQUEST=GetMap&STYLES=&BBOX={1}&WIDTH=200&HEIGHT=150').format(lay_name, bbox_req)
+    conf_options = load_default_config()
+
+    def start_response(status, headers, exc_info=None):
+        captured[:] = [status, headers, exc_info]
+        return output.append
+
+    # Merge both
+    load_config(conf_options, config_dict=yaml_text)
+    conf = ProxyConfiguration(conf_options, seed=False, renderd=False)
+
+    # Create a MapProxy App
+    app = MapProxyApp(conf.configured_services(), conf.base_config)
+
+    # Get a response from MapProxyAppy as if it was running standalone.
+    environ = environ_from_url(path_info)
+    app_iter = app(environ, start_response)
+
+    response = HttpResponse(next(app_iter), content_type='image/png')
+
+    return response
+
+
+def layer_mapproxy(request, layer_uuid, path_info):
+    layer = layer_from_csw(layer_uuid)
 
     # Set up a mapproxy app for this particular layer
     mp, yaml_config = get_mapproxy(layer)
@@ -1171,19 +1244,6 @@ def layer_mapproxy(request, catalog, layer_id, path_info):
 
     if len(query) > 0:
         path_info = path_info + '?' + query
-
-    # TODO: Add params and headers into request.
-    # params = {}
-    # headers = {
-    #     'X-Script-Name': '/{0}/layer/{1}'.format(catalog, layer_id),
-    #     'X-Forwarded-Host': request.META['HTTP_HOST'],
-    #     'HTTP_HOST': request.META['HTTP_HOST'],
-    #     'SERVER_NAME': request.META['SERVER_NAME'],
-    # }
-
-    if path_info == '/config':
-        response = HttpResponse(yaml_config, content_type='text/plain')
-        return response
 
     captured = []
     output = []
@@ -1234,13 +1294,15 @@ def list_catalogs_view(request):
 
 
 urlpatterns = [
-    url(r'^$', csw_view),
-    url(r'^(?P<catalog>\w+)?$', csw_view),
-    url(r'^registry/api/catalogs/$', list_catalogs_view, name="list_catalogs"),
-    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
-    url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
-        layer_mapproxy,
-        name='layer_mapproxy'),
+    url(r'^csw$', csw_view),
+    url(r'^api$', search_view),
+    url(r'^catalog$', list_catalogs_view),
+    url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
+    url(r'^catalog/(?P<catalog>\w+)/api$', search_view),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).yml$', layer_yml_view, name="layer_yml"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).png$', layer_png_view, name="layer_png"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).xml$', layer_xml_view, name="layer_xml"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12})(?P<path_info>/.*)$', layer_mapproxy),
 ]
 
 
