@@ -201,10 +201,16 @@ def clear_records():
     '''
     Function that clears records for both database and search backend.
     '''
-    yield
-    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    es_client.delete(catalog_slug)
+    es = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    for item in es.get('_aliases').keys():
+        es.delete(item)
+    registry.create_index(catalog_slug)
     context = config.StaticContext()
+    delete_records(context,
+                   registry.PYCSW['repository']['database'],
+                   registry.PYCSW['repository']['table'])
+    yield
+    registry.delete_index(catalog_slug)
     delete_records(context,
                    registry.PYCSW['repository']['database'],
                    registry.PYCSW['repository']['table'])
@@ -232,8 +238,10 @@ def test_single_transaction(client, clear_records):
     assert 'total' in search_response['hits']
     assert 1 == search_response['hits']['total']
 
-    wrong_url = 'http://localhost:9500'
-    assert 'connection error' in registry.es_connect(wrong_url)
+    # Delete empty catalog
+    response = client.delete('/not_catalog')
+    assert 200 == response.status_code
+    assert 'Catalog does not exist!' == response.content.decode('utf-8')
 
 
 def test_multiple_transactions(client, clear_records):
@@ -290,7 +298,7 @@ def test_parse_params(client, clear_records):
 def test_catalogs(client):
     catalogs = ['catalog_1', 'catalog_2', 'catalog_3']
     for catalog in catalogs:
-        response = client.get('/{0}/insert'.format(catalog))
+        response = client.put('/{0}'.format(catalog))
         assert 200 == response.status_code
         assert 'Catalog {0} created succesfully'.format(catalog) == response.content.decode('utf-8')
 
@@ -301,9 +309,8 @@ def test_catalogs(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(catalogs) == len(results)
 
-    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
     for catalog in catalogs:
-        es_client.delete(catalog)
+        client.delete('/{0}'.format(catalog))
 
     # Test empty list of catalogs.
     response = client.get('/catalogs/')
@@ -638,6 +645,11 @@ def test_utilities(client, clear_records):
     assert value.bounds[1] == -180
     assert value.bounds[2] == 90
     assert value.bounds[3] == 180
+
+    wrong_url = 'http://localhost:9500'
+    with pytest.raises(Exception) as excinfo:
+        response = registry.es_connect(wrong_url)
+    assert 'connection error' in str(excinfo.value)
 
 
 if __name__ == '__main__':

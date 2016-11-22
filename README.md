@@ -72,15 +72,26 @@ Usage
 	python -c "from test_registry import construct_payload; print construct_payload(records_number=10);" > payload.xml
 	```
 
-3. Add records into the database and search engine via CSW-T
+3. Create catalog using registry API
+	```sh
+	curl -XPUT http://localhost:8000/<catalog_slug>
+	```
+
+4. Add records into the database and search engine via CSW-T
 	```sh
 	curl -XPOST -d @payload.xml  http://localhost:8000/<catalog_slug>
 	```
 
-4. Search api endpoint.
+5. Search api endpoint.
 
 	```sh
-	curl http://localhost:8000/registry/api/
+	curl http://localhost:8000/<catalog_slug>/api/
+	```
+
+6. Delete catalog.
+
+	```sh
+	curl -XDELETE http://localhost:8000/<catalog_slug>
 	```
 
 You should see the indexed information. The ```a.matchDocs``` value refers

@@ -215,6 +215,17 @@ def csw_view(request, catalog=None):
        Wraps the WSGI call and allows us to tweak any django settings.
     """
 
+    # PUT creates catalog, DELETE removes catalog.
+    # GET and POST are managed by pycsw.
+
+    if catalog and request.META['REQUEST_METHOD'] == 'PUT':
+        message = create_index(catalog)
+        return HttpResponse(message, status=200)
+
+    if catalog and request.META['REQUEST_METHOD'] == 'DELETE':
+        message = delete_index(catalog)
+        return HttpResponse(message, status=200)
+
     env = request.META.copy()
     env.update({'local.app_root': os.path.dirname(__file__),
                 'REQUEST_URI': request.build_absolute_uri()})
@@ -225,7 +236,7 @@ def csw_view(request, catalog=None):
     PYCSW['metadata:main']['provider_url'] = url
 
     # Enable CSW-T when a catalog is defined in the
-    if catalog and request.META['REQUEST_METHOD'] == 'POST':
+    if catalog:
         PYCSW['manager']['transactions'] = 'true'
 
     csw = server.Csw(PYCSW, env)
@@ -237,6 +248,19 @@ def csw_view(request, catalog=None):
                             )
 
     return response
+
+
+def delete_index(catalog, es=None):
+    if not es:
+        es, version = es_connect()
+
+    try:
+        es.delete(catalog)
+        message = 'Catalog {0} removed succesfully'.format(catalog)
+    except ElasticException:
+        message = 'Catalog does not exist!'
+
+    return message
 
 
 def record_to_dict(record):
@@ -265,15 +289,26 @@ def record_to_dict(record):
     return record_dict
 
 
-def get_or_create_index(es, version, catalog):
-    # TODO: Find a better way to catch exception in different ES versions.
-    try:
-        es.get(catalog)
-    except ElasticException:
-        mapping = es_mapping(version)
-        es.put(catalog, data=mapping)
+def check_index_exists(catalog, es=None):
+    if es is None:
+        es, version = es_connect()
 
-    return catalog
+    result = False
+    indices = es.get('_aliases').keys()
+    if catalog in indices:
+        result = True
+
+    return result
+
+
+def create_index(catalog, es=None, version=None):
+    if es is None:
+        es, version = es_connect()
+
+    mapping = es_mapping(version)
+    es.put(catalog, data=mapping)
+
+    return 'Catalog {0} created succesfully'.format(catalog)
 
 
 def es_connect(url=REGISTRY_SEARCH_URL):
@@ -281,7 +316,7 @@ def es_connect(url=REGISTRY_SEARCH_URL):
     try:
         version = es.get('')['version']['number']
     except requests.exceptions.ConnectionError:
-        return 'Elasticsearch connection error'
+        raise Exception('Elasticsearch connection error')
 
     return es, version
 
@@ -327,29 +362,33 @@ class RegistryRepository(Repository):
         url = None
         if args:
             url = args[0].url
-        catalog = parse_catalog_from_url(url)
-
-        self.es_status = 400
-        response = es_connect()
-        if 'error' not in response:
+        self.catalog = parse_catalog_from_url(url)
+        try:
+            self.es, self.version = es_connect()
             self.es_status = 200
-            self.es, version = response
-            self.catalog = get_or_create_index(self.es, version, catalog)
+        except Exception:
+            self.es_status = 404
 
         database = PYCSW['repository']['database']
+
         return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
 
     def insert(self, *args, **kwargs):
-        if self.es_status == 200:
-            record = args[0]
-            es_dict = record_to_dict(record)
-            # TODO: Do not index wrong bounding boxes.
-            try:
-                self.es[self.catalog]['layer'].post(data=es_dict)
-                print("Record {0} indexed".format(es_dict['title']))
-            except ElasticException as e:
-                print(e)
+        record = args[0]
         super(RegistryRepository, self).insert(*args)
+        if self.es_status != 200:
+            return
+        if not check_index_exists(self.catalog):
+            print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
+            return
+
+        es_dict = record_to_dict(record)
+        # TODO: Do not index wrong bounding boxes.
+        try:
+            self.es[self.catalog]['layer'].post(data=es_dict)
+            print("Record {0} indexed".format(es_dict['title']))
+        except ElasticException as e:
+            print(e)
 
 
 def parse_get_params(request):
@@ -1165,18 +1204,6 @@ def layer_mapproxy(request, catalog, layer_id, path_info):
     return response
 
 
-def insert_catalog_view(request, catalog):
-    es_response = es_connect()
-    message = 'ElasticSearch connection error'
-    if 'error' not in es_response:
-        es, version = es_response
-        catalog = get_or_create_index(es, version, catalog)
-        message = "Catalog {0} created succesfully".format(catalog)
-    response = HttpResponse(message, status=200)
-
-    return response
-
-
 def create_response_dict(catalog_id, catalog):
     dictionary = {
         'id': catalog_id,
@@ -1210,7 +1237,6 @@ urlpatterns = [
     url(r'^(?P<catalog>\w+)?$', csw_view),
     url(r'^catalogs/$', list_catalogs_view, name="list_catalogs"),
     url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
-    url(r'^(?P<catalog>[-\w]+)/insert$', insert_catalog_view, name="insert_catalog"),
     url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
         layer_mapproxy,
         name='layer_mapproxy'),
