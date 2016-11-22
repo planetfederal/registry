@@ -52,6 +52,7 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
+REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 
 # cloudfoundry additions
 if 'VCAP_SERVICES' in os.environ: # noqa
@@ -103,7 +104,7 @@ PYCSW = {
     'repository': {
         'source': 'registry.RegistryRepository',
         'mappings': 'registry',
-        'database': 'sqlite:////tmp/registry.db',
+        'database': REGISTRY_DATABASE_URL,
         'table': 'records',
     },
     'server': {
