@@ -1010,7 +1010,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
             'req': {
                 'url': url.split('?')[0],
                 'grid': 'default_grid',
-                'transpxrent': True,
+                'transparent': True,
             },
         }
 
