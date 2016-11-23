@@ -314,8 +314,8 @@ def test_catalogs(client):
 
     # Test empty list of catalogs.
     response = client.get('/catalog')
-    assert 200 == response.status_code
-    assert 'empty' in response.content.decode('utf-8')
+    assert 404 == response.status_code
+    assert 'Empty' in response.content.decode('utf-8')
 
 
 def test_search_api(client, clear_records):
@@ -654,9 +654,9 @@ def test_utilities(client, clear_records):
     assert value.bounds[3] == 180
 
     wrong_url = 'http://localhost:9500'
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(requests.exceptions.ConnectionError) as excinfo:
         response = registry.es_connect(wrong_url)
-    assert 'connection error' in str(excinfo.value)
+    assert 'Failed to establish a new connection' in str(excinfo.value)
 
 
 if __name__ == '__main__':

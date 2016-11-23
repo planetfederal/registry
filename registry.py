@@ -314,10 +314,7 @@ def create_index(catalog, es=None, version=None):
 
 def es_connect(url=REGISTRY_SEARCH_URL):
     es = rawes.Elastic(url)
-    try:
-        version = es.get('')['version']['number']
-    except requests.exceptions.ConnectionError:
-        raise Exception('Elasticsearch connection error')
+    version = es.get('')['version']['number']
 
     return es, version
 
@@ -365,7 +362,7 @@ class RegistryRepository(Repository):
         try:
             self.es, self.version = es_connect()
             self.es_status = 200
-        except Exception:
+        except requests.exceptions.ConnectionError:
             self.es_status = 404
 
         database = PYCSW['repository']['database']
@@ -1278,17 +1275,16 @@ def create_response_dict(catalog_id, catalog):
 
 
 def list_catalogs_view(request):
-    es_response = es_connect()
-    message = 'ElasticSearch connection error'
-    if 'error' not in es_response:
-        es, _ = es_response
-        list_catalogs = es.get('_aliases').keys()
-        response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
-        message = json.dumps(response_list)
+    es, _ = es_connect()
 
-        if len(list_catalogs) == 0:
-            message = 'List of catalogs is empty!'
-    response = HttpResponse(message, status=200)
+    list_catalogs = es.get('_aliases').keys()
+    response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
+    message, status = json.dumps(response_list), 200
+
+    if len(list_catalogs) == 0:
+        message, status = 'Empty list of catalogs', 404
+
+    response = HttpResponse(message, status=status)
 
     return response
 
