@@ -1215,16 +1215,9 @@ def layer_png_view(request, layer_uuid):
         captured[:] = [status, headers, exc_info]
         return output.append
 
-    # Merge both
-    load_config(conf_options, config_dict=yaml_text)
-    conf = ProxyConfiguration(conf_options, seed=False, renderd=False)
-
-    # Create a MapProxy App
-    app = MapProxyApp(conf.configured_services(), conf.base_config)
-
     # Get a response from MapProxyAppy as if it was running standalone.
     environ = environ_from_url(path_info)
-    app_iter = app(environ, start_response)
+    app_iter = mp(environ, start_response)
 
     response = HttpResponse(next(app_iter), content_type='image/png')
 

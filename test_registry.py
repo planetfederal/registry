@@ -613,12 +613,6 @@ def test_mapproxy(client, clear_records):
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
-    #TODO: fix mapproxy for image request.
-    # mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
-    #                '&wms_layer=layer_1+titleterm1'.format(catalog_slug)
-    # response = client.get(mapproxy_url)
-    # assert 200 == response.status_code
-
 
 def test_elasticsearch(client, clear_records):
     # Test when there is no connection in elasticsearch, add records to pycsw.
