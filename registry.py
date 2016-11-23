@@ -968,7 +968,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
        Compatible with django-registry and GeoNode.
     """
     bbox = list(wkt2geom(layer.wkt_geometry))
-
+    bbox = ",".join([format(x, '.4f') for x in bbox])
     url = str(layer.source)
 
     layer_name = str(layer.title)
@@ -1003,14 +1003,14 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
         url = url.replace("arcx/rest/services", "arcx/services")
 
         srs = 'EPSG:3857'
-        bbox_srs = 'EPSG:3857'
+        bbox_srs = 'EPSG:4326'
 
         default_source = {
             'type': 'arcgis',
             'req': {
-                'url': url,
+                'url': url.split('?')[0],
                 'grid': 'default_grid',
-                'transparent': True,
+                'transpxrent': True,
             },
         }
 
@@ -1039,11 +1039,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
 
     # The layer is connected to the cache
     layers = [
-        {
-            'name': layer_name,
-            'sources': ['default_cache'],
-            'title': str(layer.title),
-        },
+        {'name': layer_name,
+         'sources': ['default_cache'],
+         'title': "%s" % layer.title,
+         },
     ]
 
     # Services expose all layers.
@@ -1058,6 +1057,8 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
                 'title': 'Harvard HyperMap Proxy'
             },
             'srs': ['EPSG:4326', 'EPSG:3857'],
+            'srs_bbox': 'EPSG:4326',
+            'bbox': bbox,
             'versions': ['1.1.1']
         },
         'wmts': {
@@ -1098,7 +1099,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     # Merge both
     load_config(conf_options, config_dict=extra_config)
 
-    # TODO: Make sure the config is valid.
+    # Make sure the config is valid.
     errors, informal_only = validate_options(conf_options)
     for error in errors:
         LOGGER.warn(error)
@@ -1114,6 +1115,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     # Create a MapProxy App
     app = MapProxyApp(conf.configured_services(), conf.base_config)
 
+    # Wrap it in an object that allows to get requests by path as a string.
     return app, yaml_config
 
 
@@ -1150,13 +1152,12 @@ def environ_from_url(path):
 
 
 def get_path_info_params(yaml_text):
-    sources = yaml_text['sources']['default_source']
     bbox_req = '-180,-90,180,90'
-    if 'coverage' in sources:
-        coverage = yaml_text['sources']['default_source']['coverage']
-        bbox_req = ','.join([str(f) for f in coverage['bbox']])
 
-    if 'layers'in yaml_text:
+    if 'services' in yaml_text:
+        bbox_req = yaml_text['services']['wms']['bbox']
+
+    if 'layers' in yaml_text:
         lay_name = yaml_text['layers'][0]['name']
 
     return bbox_req, lay_name
@@ -1166,17 +1167,17 @@ def layer_from_csw(layer_uuid):
     # Get Layer with matching catalog and primary key
     repository = RegistryRepository()
     layer_ids = repository.query_ids([layer_uuid])
-
+    layer = None
     if len(layer_ids) > 0:
         layer = layer_ids[0]
-    else:
-        raise Exception("Layer with uuid {0} does not exist.".format(layer_uuid))
 
     return layer
 
 
 def layer_yml_view(request, layer_uuid):
     layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
 
     # Set up a mapproxy app for this particular layer
     _, yaml_config = get_mapproxy(layer)
@@ -1197,6 +1198,8 @@ def layer_xml_view(request, layer_uuid):
 
 def layer_png_view(request, layer_uuid):
     layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
 
     # Set up a mapproxy app for this particular layer
     mp, yaml_config = get_mapproxy(layer)
@@ -1209,7 +1212,6 @@ def layer_png_view(request, layer_uuid):
     path_info = ('/service?LAYERS={0}&FORMAT=image%2Fpng&SRS=EPSG%3A4326'
                  '&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&TRANSPARENT=TRUE&SERVICE=WMS&VERSION=1.1.1&'
                  'REQUEST=GetMap&STYLES=&BBOX={1}&WIDTH=200&HEIGHT=150').format(lay_name, bbox_req)
-    conf_options = load_default_config()
 
     def start_response(status, headers, exc_info=None):
         captured[:] = [status, headers, exc_info]
@@ -1226,6 +1228,8 @@ def layer_png_view(request, layer_uuid):
 
 def layer_mapproxy(request, layer_uuid, path_info):
     layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
 
     # Set up a mapproxy app for this particular layer
     mp, yaml_config = get_mapproxy(layer)
