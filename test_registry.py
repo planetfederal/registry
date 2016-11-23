@@ -600,9 +600,9 @@ def test_mapproxy(client, clear_records):
     assert 200 == response.status_code
     assert 'image/png' in response.serialize_headers().decode('utf-8')
 
-    mapproxy_url = '/layer/10.yml'
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.yml'
     response = client.get(mapproxy_url)
-    assert 404 == response.status_code
+    assert 500 == response.status_code
 
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170/'
     response = client.get(mapproxy_url)
