@@ -253,7 +253,7 @@ def csw_view(request, catalog=None):
 
 def delete_index(catalog, es=None):
     if not es:
-        es, version = es_connect()
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     try:
         es.delete(catalog)
@@ -292,7 +292,7 @@ def record_to_dict(record):
 
 def check_index_exists(catalog, es=None):
     if es is None:
-        es, version = es_connect()
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     result = False
     indices = es.get('_aliases').keys()
@@ -304,7 +304,7 @@ def check_index_exists(catalog, es=None):
 
 def create_index(catalog, es=None, version=None):
     if es is None:
-        es, version = es_connect()
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     mapping = es_mapping(version)
     es.put(catalog, data=mapping)
@@ -312,7 +312,7 @@ def create_index(catalog, es=None, version=None):
     return 'Catalog {0} created succesfully'.format(catalog)
 
 
-def es_connect(url=REGISTRY_SEARCH_URL):
+def es_connect(url):
     es = rawes.Elastic(url)
     version = es.get('')['version']['number']
 
@@ -360,7 +360,7 @@ class RegistryRepository(Repository):
             self.catalog = parse_catalog_from_url(url)
 
         try:
-            self.es, self.version = es_connect()
+            self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
             self.es_status = 200
         except requests.exceptions.ConnectionError:
             self.es_status = 404
@@ -1275,7 +1275,7 @@ def create_response_dict(catalog_id, catalog):
 
 
 def list_catalogs_view(request):
-    es, _ = es_connect()
+    es, _ = es_connect(url=REGISTRY_SEARCH_URL)
 
     list_catalogs = es.get('_aliases').keys()
     response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
