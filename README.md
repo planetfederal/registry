@@ -135,9 +135,9 @@ Testing
 
 2. Run tests
 
-```sh
-python setup.py test
-```
+	```sh
+	python setup.py test
+	```
 
 
 Troubleshooting
