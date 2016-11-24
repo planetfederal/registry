@@ -54,11 +54,22 @@ REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 
-# cloudfoundry additions
-if 'VCAP_SERVICES' in os.environ: # noqa
-    vcap_config = json.loads(os.environ.get('VCAP_SERVICES', None)) # noqa
-    if 'searchly' in vcap_config: # noqa
-        REGISTRY_SEARCH_URL = vcap_config['searchly'][0]['credentials']['sslUri'] # noqa
+VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
+
+
+def vcaps_search_url(VCAP_SERVICES, registry_url):
+    """Extract registry_url from VCAP_SERVICES dict
+    """
+    if VCAP_SERVICES:
+        vcap_config = json.loads(VCAP_SERVICES)
+        if 'searchly' in vcap_config:
+            registry_url = vcap_config['searchly'][0]['credentials']['sslUri']
+
+    return registry_url
+
+
+# Override REGISTRY_SEARCH_URL if VCAP_SERVICES is defined.
+REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
 
 TIMEZONE = tz.gettz('America/New_York')
 

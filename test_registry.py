@@ -604,11 +604,31 @@ def test_mapproxy(client, clear_records):
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
 
-    #TODO: fix mapproxy for image request.
+    # TODO: fix mapproxy for image request.
     # mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
     #                '&wms_layer=layer_1+titleterm1'.format(catalog_slug)
     # response = client.get(mapproxy_url)
     # assert 200 == response.status_code
+
+
+def test_vcaps(client):
+    SAMPLE_VCAPS = r"""{
+        "searchly": [
+            {
+            "name": "searchly-1",
+            "label": "searchly",
+            "tags": [ ],
+            "plan": "starter",
+            "credentials": {
+                "uri": "http://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io",
+                "sslUri": "https://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io"
+            }
+            }
+        ]
+        }
+    """
+    registry_url = registry.vcaps_search_url(SAMPLE_VCAPS, 'http://localhost:9200/')
+    assert registry_url == 'https://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io'
 
 
 def test_utilities(client, clear_records):
