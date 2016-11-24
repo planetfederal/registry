@@ -1306,7 +1306,19 @@ def list_catalogs_view(request):
     return response
 
 
+def readme_view(request):
+    with open('documentation.md') as f:
+        readme = f.readlines()
+
+    del(readme[3:5], readme[8])
+
+    response = HttpResponse(''.join(readme), status=200, content_type='text/plain')
+
+    return response
+
+
 urlpatterns = [
+    url(r'^$', readme_view),
     url(r'^csw$', csw_view),
     url(r'^api$', search_view),
     url(r'^catalog$', list_catalogs_view),

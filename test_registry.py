@@ -675,6 +675,10 @@ def test_utilities(client, clear_records):
     response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
+    # Hit the docs.
+    response = client.get('/')
+    assert 200 == response.status_code
+
     datetime_range = "[2013-03-01 TO 2014-05-02T23:00:00]"
     start, end = registry.parse_datetime_range(datetime_range)
     assert start.get("is_common_era")
