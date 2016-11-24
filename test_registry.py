@@ -718,5 +718,11 @@ def test_utilities(client, clear_records):
     assert 'Failed to establish a new connection' in str(excinfo.value)
 
 
+def test_bad_mapproxy_config(client):
+    with pytest.raises(registry.ConfigurationError) as excinfo:
+        registry.configure_mapproxy({}, ignore_warnings=False)
+    assert 'invalid configuration' in str(excinfo.value)
+
+
 if __name__ == '__main__':
     pytest.main()

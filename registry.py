@@ -974,7 +974,7 @@ def search_view(request, catalog=None):
     return HttpResponse(data, status=status)
 
 
-def configure_mapproxy(extra_config):
+def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=False):
     """Create an validate mapproxy configuration based on a dict.
     """
     # Start with a sane configuration using MapProxy's defaults
@@ -987,12 +987,14 @@ def configure_mapproxy(extra_config):
     errors, informal_only = validate_options(conf_options)
     for error in errors:
         LOGGER.warn(error)
-    if not informal_only or (errors and not ignore_warnings):
-        raise ConfigurationError('invalid configuration')
+    if errors and not ignore_warnings:
+        raise ConfigurationError('invalid configuration: %s' % ', '.join(errors))
 
     errors = validate_references(conf_options)
     for error in errors:
         LOGGER.warn(error)
+    if errors and not ignore_warnings:
+        raise ConfigurationError('invalid references: %s' % ', '.join(errors))
 
     conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
 
