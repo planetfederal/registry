@@ -974,6 +974,31 @@ def search_view(request, catalog=None):
     return HttpResponse(data, status=status)
 
 
+def configure_mapproxy(extra_config):
+    """Create an validate mapproxy configuration based on a dict.
+    """
+    # Start with a sane configuration using MapProxy's defaults
+    conf_options = load_default_config()
+
+    # Merge both
+    load_config(conf_options, config_dict=extra_config)
+
+    # Make sure the config is valid.
+    errors, informal_only = validate_options(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+    if not informal_only or (errors and not ignore_warnings):
+        raise ConfigurationError('invalid configuration')
+
+    errors = validate_references(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+
+    conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
+
+    return conf
+
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
@@ -1089,9 +1114,6 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
         },
     }
 
-    # Start with a sane configuration using MapProxy's defaults
-    conf_options = load_default_config()
-
     # Populate a dictionary with custom config changes
     extra_config = {
         'caches': caches,
@@ -1107,22 +1129,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     # line and use that to generate a yaml config.
     # assert False
 
-    # Merge both
-    load_config(conf_options, config_dict=extra_config)
-
-    # Make sure the config is valid.
-    errors, informal_only = validate_options(conf_options)
-    for error in errors:
-        LOGGER.warn(error)
-    if not informal_only or (errors and not ignore_warnings):
-        raise ConfigurationError('invalid configuration')
-
-    errors = validate_references(conf_options)
-    for error in errors:
-        LOGGER.warn(error)
-
-    conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
-
+    conf = configure_mapproxy(extra_config)
     # Create a MapProxy App
     app = MapProxyApp(conf.configured_services(), conf.base_config)
 
