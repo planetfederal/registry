@@ -161,6 +161,28 @@ Troubleshooting
 
 	**Reason:** Records have been added previously into the database.
 
+3. To debug mapproxy for a single layer.
+
+	- Install mapproxy locally.
+
+		```sh
+		pip install MapProxy==1.9.0
+		```
+
+	- Retreive from registry the yaml configuration file and copy.
+
+		```sh
+		curl http://localhost:8000/layer/<layer_uuid>.yml > layer.yml
+		```
+
+	- Create mapproxy local server using the downloaded configuration file. The server will listen port 8080
+
+		```sh
+		mapproxy-util serve-develop layer.yml
+		```
+
+	- Navigate through mapproxy web server and check the logs in terminal.
+
 
 Features
 ========

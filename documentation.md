@@ -31,11 +31,16 @@ Requirements
 Usage
 -----
 
-Registry is written in python and uses Django framework. Start the server using
+Registry is written in python and uses Django framework. First, is necessary
+to configure the pycsw database.
+
+	| python registry.py pycsw -c setup_db
+
+Then, start the server
 
 	| python registry.py runserver
 
-Also, you need to start elasticsearch search engine. You can verify if
+Then, you need to start elasticsearch search engine. You can verify if
 elasticsearch is running, executing the following command:
 
 	| elasticsearch -v
