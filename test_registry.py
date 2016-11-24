@@ -314,8 +314,8 @@ def test_catalogs(client):
 
     # Test empty list of catalogs.
     response = client.get('/catalog')
-    assert 200 == response.status_code
-    assert 'empty' in response.content.decode('utf-8')
+    assert 404 == response.status_code
+    assert 'Empty' in response.content.decode('utf-8')
 
 
 def test_search_api(client, clear_records):
@@ -600,15 +600,54 @@ def test_mapproxy(client, clear_records):
     assert 200 == response.status_code
     assert 'image/png' in response.serialize_headers().decode('utf-8')
 
-    mapproxy_url = '/layer/10.yml'
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.yml'
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
 
-    # TODO: fix mapproxy for image request.
-    # mapproxy_url = '/{0}/layer/1/demo/?srs=EPSG%3A3857&format=image%2Fpng' \
-    #                '&wms_layer=layer_1+titleterm1'.format(catalog_slug)
-    # response = client.get(mapproxy_url)
-    # assert 200 == response.status_code
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.png'
+    response = client.get(mapproxy_url)
+    assert 404 == response.status_code
+
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171/'
+    response = client.get(mapproxy_url)
+    assert 404 == response.status_code
+
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170/'
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170/demo/?srs=EPSG' \
+                   '%3A3857&format=image%2Fpng&wms_layer=layer_1+titleterm1'
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+
+
+def test_elasticsearch(client, clear_records):
+    # Test when there is no connection in elasticsearch, add records to pycsw.
+    payload = construct_payload(records_number=1)
+    temp = registry.REGISTRY_SEARCH_URL
+    registry.REGISTRY_SEARCH_URL = 'http://localhost:9500'
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+
+    response = client.get(get_records_url)
+    number_records_matched = get_number_records(response)
+    assert 200 == response.status_code
+    assert 1 == number_records_matched
+    registry.REGISTRY_SEARCH_URL = temp
+
+    payload = construct_payload(records_number=3)
+    response = client.post('/catalog/not_es/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    wrong_bbox_record = layers_list[0]
+    wrong_bbox_record['upper_corner_1'] = wrong_bbox_record['upper_corner_1'] + 5000
+    wrong_bbox_record['upper_corner_2'] = wrong_bbox_record['upper_corner_2'] + 5000
+    wrong_bbox_record['lower_corner_1'] = wrong_bbox_record['lower_corner_1'] + 5000
+    wrong_bbox_record['lower_corner_2'] = wrong_bbox_record['lower_corner_2'] + 5000
+
+    payload = construct_payload(layers_list=[wrong_bbox_record])
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
 
 
 def test_vcaps(client):
@@ -674,9 +713,9 @@ def test_utilities(client, clear_records):
     assert value.bounds[3] == 180
 
     wrong_url = 'http://localhost:9500'
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(requests.exceptions.ConnectionError) as excinfo:
         response = registry.es_connect(wrong_url)
-    assert 'connection error' in str(excinfo.value)
+    assert 'Failed to establish a new connection' in str(excinfo.value)
 
 
 if __name__ == '__main__':

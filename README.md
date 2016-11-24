@@ -67,31 +67,59 @@ Usage
 	python registry.py runserver
 	```
 
-2. Create synthetic information.
+2. List catalogs
 	```sh
-	python -c "from test_registry import construct_payload; print construct_payload(records_number=10);" > payload.xml
+	curl http://localhost:8000/catalog
 	```
 
 3. Create catalog using registry API
 	```sh
-	curl -XPUT http://localhost:8000/<catalog_slug>
+	curl -XPUT http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
 4. Add records into the database and search engine via CSW-T
 	```sh
-	curl -XPOST -d @payload.xml  http://localhost:8000/<catalog_slug>
+	curl -XPOST -d @payload.xml  http://localhost:8000/catalog/<catalog_slug>/csw
 	```
+
+	**Note.** You cannot records to Registry if catalog has not been created before.
 
 5. Search api endpoint.
 
+	- For all records.
+
+		```sh
+		curl http://localhost:8000/api/
+		```
+
+	- For a single catalog.
+
+		```sh
+		curl http://localhost:8000/catalog/<catalog_slug>/api/
+		```
+
+6. Get record from csw.
+
 	```sh
-	curl http://localhost:8000/<catalog_slug>/api/
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.xml
 	```
 
-6. Delete catalog.
+7. Get mapproxy yaml configuration file.
 
 	```sh
-	curl -XDELETE http://localhost:8000/<catalog_slug>
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.yml
+	```
+
+8. Get mapproxy png.
+
+	```sh
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.png
+	```
+
+0. Delete catalog.
+
+	```sh
+	curl -XDELETE http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
 You should see the indexed information. The ```a.matchDocs``` value refers
