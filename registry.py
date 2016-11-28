@@ -1325,7 +1325,7 @@ urlpatterns = [
     url(r'^api$', search_view),
     url(r'^catalog$', list_catalogs_view),
     url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
-    url(r'^catalog/(?P<catalog>\w+)/api$', search_view),
+    url(r'^catalog/(?P<catalog>\w+)/api/$', search_view),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).yml$', layer_yml_view, name="layer_yml"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).png$', layer_png_view, name="layer_png"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).xml$', layer_xml_view, name="layer_xml"),
