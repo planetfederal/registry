@@ -438,35 +438,68 @@ def test_q_text_fields(client, clear_records):
 
 
 def test_q_text_fields_boost(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
+    layers = [
+        {
+            'identifier': 10,
+            'title': 'alpha',
+            'creator': 'beta',
+            'lower_corner_1': -40.0,
+            'upper_corner_1': -20.0,
+            'lower_corner_2': -40.0,
+            'upper_corner_2': -20.0,
+            'i': 0,
+            'type': 'ESRI:ArcGIS:ImageServer',
+            'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        },
+        {
+            'identifier': 20,
+            'title': 'beta',
+            'creator': 'alpha',
+            'lower_corner_1': -40.0,
+            'upper_corner_1': -20.0,
+            'lower_corner_2': 40.0,
+            'upper_corner_2': 20.0,
+            'i': 1,
+            'type': 'ESRI:ArcGIS:ImageServer',
+            'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+        }
+    ]
+    payload = construct_payload(layers_list=layers)
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
     time.sleep(5)
 
-    # Boosting alltext will make it score higher, despite lower tf*idf
+    # Boosting title will make doc 10 score higher
     params = default_params.copy()
-    params["q_text"] = "{0} {1} {2}".format("user_1", "layer_4", "titleterm4")
-    params["q_text_fields"] = "{0},{1}".format("alltext^5.0", "layer_originator^0.1")
+    params["q_text"] = "{0}".format("alpha")
+    params["q_text_fields"] = "{0},{1}".format("title^8.0", "layer_originator^0.1")
     params["d_docs_limit"] = 100
 
     api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 3 == results['a.matchDocs']
-    assert layers_list[3]['title'] == results.get("d.docs", [])[0]['title']
-    assert layers_list[0]['creator'] == results.get("d.docs", [])[1]['layer_originator']
-    assert layers_list[1]['creator'] == results.get("d.docs", [])[2]['layer_originator']
+    assert 2 == results['a.matchDocs']
+    assert layers[0]['title'] == results.get("d.docs", [])[0]['title']
+    assert layers[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
 
-    # Boosting layer_originator will move the 4th doc to the last in score
-    params["q_text_fields"] = "{0},{1}".format("alltext^0.1", "layer_originator^5.0")
+    # Boosting layer_originator will make doc 20 score higher on the same query
+    params["q_text_fields"] = "{0},{1}".format("title^0.1", "layer_originator^5.0")
     response = client.get(api_url, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 3 == results['a.matchDocs']
-    assert layers_list[3]['title'] == results.get("d.docs", [])[2]['title']
-    assert layers_list[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
-    assert layers_list[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
+    assert 2 == results['a.matchDocs']
+    assert layers[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
+    assert layers[1]['title'] == results.get("d.docs", [])[1]['title']
+
+    # Not Boosting title enough will make doc 20 score higher
+    params["q_text_fields"] = "{0},{1}".format("title^6.0", "layer_originator^0.1")
+    response = client.get(api_url, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
+    assert layers[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
+    assert layers[1]['title'] == results.get("d.docs", [])[1]['title']
 
 
 def test_q_user(client, clear_records):
