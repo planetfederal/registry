@@ -1,11 +1,26 @@
 version: '2'
 services:
-  registry:
-    build: .
-    ports:
-      - "8000:8000"
 
   elasticsearch:
-    image: terranodo/elasticsearch
+   image: elasticsearch:1.7
+   #image: terranodo/elasticsearch
+
+  django:
+    build: .
+    volumes:
+      - '.:/code/'
+    environment:
+    - REGISTRY_SEARCH_URL=http://elasticsearch:9200/
+
+  maploom:
+    image: terranodo/maploom
+    command: grunt serve
+
+  nginx:
+    image: geonode/nginx:registry
+    links:
+      - django
+      - maploom
+      - elasticsearch
     ports:
-      - "9200:9200"
+      - "80:80"

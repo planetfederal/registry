@@ -50,15 +50,26 @@ ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
 
-REGISTRY_INDEX_NAME = os.getenv('REGISTRY_INDEX_NAME', 'registry')
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
+REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 
-# cloudfoundry additions
-if 'VCAP_SERVICES' in os.environ: # noqa
-    vcap_config = json.loads(os.environ.get('VCAP_SERVICES', None)) # noqa
-    if 'searchly' in vcap_config: # noqa
-        REGISTRY_SEARCH_URL = vcap_config['searchly'][0]['credentials']['sslUri'] # noqa
+VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
+
+
+def vcaps_search_url(VCAP_SERVICES, registry_url):
+    """Extract registry_url from VCAP_SERVICES dict
+    """
+    if VCAP_SERVICES:
+        vcap_config = json.loads(VCAP_SERVICES)
+        if 'searchly' in vcap_config:
+            registry_url = vcap_config['searchly'][0]['credentials']['sslUri']
+
+    return registry_url
+
+
+# Override REGISTRY_SEARCH_URL if VCAP_SERVICES is defined.
+REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
 
 TIMEZONE = tz.gettz('America/New_York')
 
@@ -104,7 +115,7 @@ PYCSW = {
     'repository': {
         'source': 'registry.RegistryRepository',
         'mappings': 'registry',
-        'database': 'sqlite:////tmp/registry.db',
+        'database': REGISTRY_DATABASE_URL,
         'table': 'records',
     },
     'server': {
@@ -140,7 +151,7 @@ PYCSW = {
         'contact_role': 'pointOfContact',
     },
     'manager': {
-        'transactions': 'true',
+        'transactions': 'false',
         'allowed_ips': os.getenv('REGISTRY_ALLOWED_IPS', '*'),
     },
 }
@@ -215,6 +226,18 @@ def csw_view(request, catalog=None):
     """CSW dispatch view.
        Wraps the WSGI call and allows us to tweak any django settings.
     """
+
+    # PUT creates catalog, DELETE removes catalog.
+    # GET and POST are managed by pycsw.
+
+    if catalog and request.META['REQUEST_METHOD'] == 'PUT':
+        message = create_index(catalog)
+        return HttpResponse(message, status=200)
+
+    if catalog and request.META['REQUEST_METHOD'] == 'DELETE':
+        message, status = delete_index(catalog)
+        return HttpResponse(message, status=status)
+
     env = request.META.copy()
     env.update({'local.app_root': os.path.dirname(__file__),
                 'REQUEST_URI': request.build_absolute_uri()})
@@ -223,6 +246,10 @@ def csw_view(request, catalog=None):
     url = request.build_absolute_uri()
     PYCSW['server']['url'] = url
     PYCSW['metadata:main']['provider_url'] = url
+
+    # Enable CSW-T when a catalog is defined in the
+    if catalog:
+        PYCSW['manager']['transactions'] = 'true'
 
     csw = server.Csw(PYCSW, env)
     status, content = csw.dispatch_wsgi()
@@ -235,9 +262,24 @@ def csw_view(request, catalog=None):
     return response
 
 
+def delete_index(catalog, es=None):
+    if not es:
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
+
+    try:
+        es.delete(catalog)
+        message, status = 'Catalog {0} removed succesfully'.format(catalog), 200
+    except ElasticException:
+        message, status = 'Catalog does not exist!', 404
+
+    return message, status
+
+
 def record_to_dict(record):
-    # TODO: check for correct order.
-    bbox = wkt2geom(record.wkt_geometry)
+    # Get bounding box from wkt geometry if it exists in the record.
+    bbox = (-180, -90, 180, 90)
+    if record.wkt_geometry:
+        bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
     record_dict = {
         'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
@@ -261,23 +303,31 @@ def record_to_dict(record):
     return record_dict
 
 
-def get_or_create_index(es, version, catalog):
-    # TODO: Find a better way to catch exception in different ES versions.
-    try:
-        es.get(catalog)
-    except ElasticException:
-        mapping = es_mapping(version)
-        es.put(catalog, data=mapping)
+def check_index_exists(catalog, es=None):
+    if es is None:
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
-    return catalog
+    result = False
+    indices = es.get('_aliases').keys()
+    if catalog in indices:
+        result = True
+
+    return result
 
 
-def es_connect(url=REGISTRY_SEARCH_URL):
+def create_index(catalog, es=None, version=None):
+    if es is None:
+        es, version = es_connect(url=REGISTRY_SEARCH_URL)
+
+    mapping = es_mapping(version)
+    es.put(catalog, data=mapping)
+
+    return 'Catalog {0} created succesfully'.format(catalog)
+
+
+def es_connect(url):
     es = rawes.Elastic(url)
-    try:
-        version = es.get('')['version']['number']
-    except requests.exceptions.ConnectionError:
-        return 'Elasticsearch connection error'
+    version = es.get('')['version']['number']
 
     return es, version
 
@@ -309,48 +359,45 @@ def text_field(version, **kwargs):
     return field_def
 
 
-def parse_catalog_from_url(url=None):
-    catalog_slug = REGISTRY_INDEX_NAME
-    if not url:
-        return catalog_slug
-
+def parse_catalog_from_url(url):
     parsed_url = urlparse(url)
-    url_path = parsed_url.path.replace('/', '')
-
-    if url_path != '':
-        catalog_slug = url_path
+    catalog_slug = parsed_url.path.split('/')[2]
 
     return catalog_slug
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        url = None
-        if args:
+        if args and urlparse(args[0].url).path != '/csw':
             url = args[0].url
-        catalog = parse_catalog_from_url(url)
+            self.catalog = parse_catalog_from_url(url)
 
-        self.es_status = 400
-        response = es_connect()
-        if 'error' not in response:
+        try:
+            self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
             self.es_status = 200
-            self.es, version = response
-            self.catalog = get_or_create_index(self.es, version, catalog)
+        except requests.exceptions.ConnectionError:
+            self.es_status = 404
 
         database = PYCSW['repository']['database']
+
         return super(RegistryRepository, self).__init__(database, context=config.StaticContext())
 
     def insert(self, *args, **kwargs):
-        if self.es_status == 200:
-            record = args[0]
-            es_dict = record_to_dict(record)
-            # TODO: Do not index wrong bounding boxes.
-            try:
-                self.es[self.catalog]['layer'].post(data=es_dict)
-                print("Record {0} indexed".format(es_dict['title']))
-            except ElasticException as e:
-                print(e)
+        record = args[0]
         super(RegistryRepository, self).insert(*args)
+        if self.es_status != 200:
+            return
+        if not check_index_exists(self.catalog):
+            print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
+            return
+
+        es_dict = record_to_dict(record)
+        # TODO: Do not index wrong bounding boxes.
+        try:
+            self.es[self.catalog]['layer'].post(data=es_dict)
+            print("Record {0} indexed".format(es_dict['title']))
+        except ElasticException as e:
+            print(e)
 
 
 def parse_get_params(request):
@@ -692,8 +739,10 @@ def elasticsearch(serializer, catalog):
     :return:
     """
 
-    search_engine_endpoint = serializer.validated_data.get("search_engine_endpoint")
-    search_engine_endpoint = "{0}/{1}/_search".format(search_engine_endpoint, catalog)
+    search_endpoint = serializer.validated_data.get("search_engine_endpoint")
+    search_engine_endpoint = "{0}/_search".format(search_endpoint)
+    if catalog:
+        search_engine_endpoint = "{0}/{1}/_search".format(search_endpoint, catalog)
     q_text = serializer.validated_data.get("q_text")
     q_text_fields = serializer.validated_data.get("q_text_fields").split(',')
     q_time = serializer.validated_data.get("q_time")
@@ -924,7 +973,7 @@ def elasticsearch(serializer, catalog):
     return data
 
 
-def search_view(request, catalog):
+def search_view(request, catalog=None):
     request.GET = parse_get_params(request)
     serializer = SearchSerializer(data=request.GET)
     try:
@@ -939,15 +988,40 @@ def search_view(request, catalog):
     return HttpResponse(data, status=status)
 
 
+def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=False):
+    """Create an validate mapproxy configuration based on a dict.
+    """
+    # Start with a sane configuration using MapProxy's defaults
+    conf_options = load_default_config()
+
+    # Merge both
+    load_config(conf_options, config_dict=extra_config)
+
+    # Make sure the config is valid.
+    errors, informal_only = validate_options(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+    if errors and not ignore_warnings:
+        raise ConfigurationError('invalid configuration: %s' % ', '.join(errors))
+
+    errors = validate_references(conf_options)
+    for error in errors:
+        LOGGER.warn(error)
+    if errors and not ignore_warnings:
+        raise ConfigurationError('invalid references: %s' % ', '.join(errors))
+
+    conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
+
+    return conf
+
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
     """
     bbox = list(wkt2geom(layer.wkt_geometry))
-
-    # TODO: Check for correct url
-    url = 'http://test.registry.org'
-    # url = str(layer.service.url)
+    bbox = ",".join([format(x, '.4f') for x in bbox])
+    url = str(layer.source)
 
     layer_name = str(layer.title)
 
@@ -981,12 +1055,12 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
         url = url.replace("arcx/rest/services", "arcx/services")
 
         srs = 'EPSG:3857'
-        bbox_srs = 'EPSG:3857'
+        bbox_srs = 'EPSG:4326'
 
         default_source = {
             'type': 'arcgis',
             'req': {
-                'url': url,
+                'url': url.split('?')[0],
                 'grid': 'default_grid',
                 'transparent': True,
             },
@@ -1017,11 +1091,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
 
     # The layer is connected to the cache
     layers = [
-        {
-            'name': layer_name,
-            'sources': ['default_cache'],
-            'title': str(layer.title),
-        },
+        {'name': layer_name,
+         'sources': ['default_cache'],
+         'title': "%s" % layer.title,
+         },
     ]
 
     # Services expose all layers.
@@ -1036,6 +1109,8 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
                 'title': 'Harvard HyperMap Proxy'
             },
             'srs': ['EPSG:4326', 'EPSG:3857'],
+            'srs_bbox': 'EPSG:4326',
+            'bbox': bbox,
             'versions': ['1.1.1']
         },
         'wmts': {
@@ -1055,9 +1130,6 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
         },
     }
 
-    # Start with a sane configuration using MapProxy's defaults
-    conf_options = load_default_config()
-
     # Populate a dictionary with custom config changes
     extra_config = {
         'caches': caches,
@@ -1073,25 +1145,11 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     # line and use that to generate a yaml config.
     # assert False
 
-    # Merge both
-    load_config(conf_options, config_dict=extra_config)
-
-    # TODO: Make sure the config is valid.
-    errors, informal_only = validate_options(conf_options)
-    for error in errors:
-        LOGGER.warn(error)
-    if not informal_only or (errors and not ignore_warnings):
-        raise ConfigurationError('invalid configuration')
-
-    errors = validate_references(conf_options)
-    for error in errors:
-        LOGGER.warn(error)
-
-    conf = ProxyConfiguration(conf_options, seed=seed, renderd=renderd)
-
+    conf = configure_mapproxy(extra_config)
     # Create a MapProxy App
     app = MapProxyApp(conf.configured_services(), conf.base_config)
 
+    # Wrap it in an object that allows to get requests by path as a string.
     return app, yaml_config
 
 
@@ -1127,15 +1185,85 @@ def environ_from_url(path):
     return env
 
 
-def layer_mapproxy(request, catalog, layer_id, path_info):
+def get_path_info_params(yaml_text):
+    bbox_req = '-180,-90,180,90'
+
+    if 'services' in yaml_text:
+        bbox_req = yaml_text['services']['wms']['bbox']
+
+    if 'layers' in yaml_text:
+        lay_name = yaml_text['layers'][0]['name']
+
+    return bbox_req, lay_name
+
+
+def layer_from_csw(layer_uuid):
     # Get Layer with matching catalog and primary key
     repository = RegistryRepository()
-    layer_ids = repository.query_ids([layer_id])
-
+    layer_ids = repository.query_ids([layer_uuid])
+    layer = None
     if len(layer_ids) > 0:
         layer = layer_ids[0]
-    else:
-        return HttpResponse("Layer with id %s does not exist." % layer_id, status=404)
+
+    return layer
+
+
+def layer_yml_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
+
+    # Set up a mapproxy app for this particular layer
+    _, yaml_config = get_mapproxy(layer)
+
+    response = HttpResponse(yaml_config, content_type='text/plain')
+
+    return response
+
+
+def layer_xml_view(request, layer_uuid):
+    query_string = ('service=CSW&version=3.0.0&request=GetRecordById&elementsetname=full&'
+                    'resulttype=results&id={0}'.format(layer_uuid))
+    request.META['QUERY_STRING'] = query_string
+    response = csw_view(request)
+
+    return response
+
+
+def layer_png_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
+
+    # Set up a mapproxy app for this particular layer
+    mp, yaml_config = get_mapproxy(layer)
+    yaml_text = yaml.load(yaml_config)
+
+    captured = []
+    output = []
+    bbox_req, lay_name = get_path_info_params(yaml_text)
+
+    path_info = ('/service?LAYERS={0}&FORMAT=image%2Fpng&SRS=EPSG%3A4326'
+                 '&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&TRANSPARENT=TRUE&SERVICE=WMS&VERSION=1.1.1&'
+                 'REQUEST=GetMap&STYLES=&BBOX={1}&WIDTH=200&HEIGHT=150').format(lay_name, bbox_req)
+
+    def start_response(status, headers, exc_info=None):
+        captured[:] = [status, headers, exc_info]
+        return output.append
+
+    # Get a response from MapProxyAppy as if it was running standalone.
+    environ = environ_from_url(path_info)
+    app_iter = mp(environ, start_response)
+
+    response = HttpResponse(next(app_iter), content_type='image/png')
+
+    return response
+
+
+def layer_mapproxy(request, layer_uuid, path_info):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
 
     # Set up a mapproxy app for this particular layer
     mp, yaml_config = get_mapproxy(layer)
@@ -1144,19 +1272,6 @@ def layer_mapproxy(request, catalog, layer_id, path_info):
 
     if len(query) > 0:
         path_info = path_info + '?' + query
-
-    # TODO: Add params and headers into request.
-    # params = {}
-    # headers = {
-    #     'X-Script-Name': '/{0}/layer/{1}'.format(catalog, layer_id),
-    #     'X-Forwarded-Host': request.META['HTTP_HOST'],
-    #     'HTTP_HOST': request.META['HTTP_HOST'],
-    #     'SERVER_NAME': request.META['SERVER_NAME'],
-    # }
-
-    if path_info == '/config':
-        response = HttpResponse(yaml_config, content_type='text/plain')
-        return response
 
     captured = []
     output = []
@@ -1178,18 +1293,6 @@ def layer_mapproxy(request, catalog, layer_id, path_info):
     return response
 
 
-def insert_catalog_view(request, catalog):
-    es_response = es_connect()
-    message = 'ElasticSearch connection error'
-    if 'error' not in es_response:
-        es, version = es_response
-        catalog = get_or_create_index(es, version, catalog)
-        message = "Catalog {0} created succesfully".format(catalog)
-    response = HttpResponse(message, status=200)
-
-    return response
-
-
 def create_response_dict(catalog_id, catalog):
     dictionary = {
         'id': catalog_id,
@@ -1203,30 +1306,42 @@ def create_response_dict(catalog_id, catalog):
 
 
 def list_catalogs_view(request):
-    es_response = es_connect()
-    message = 'ElasticSearch connection error'
-    if 'error' not in es_response:
-        es, _ = es_response
-        list_catalogs = es.get('_aliases').keys()
-        response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
-        message = json.dumps(response_list)
+    es, _ = es_connect(url=REGISTRY_SEARCH_URL)
 
-        if len(list_catalogs) == 0:
-            message = 'List of catalogs is empty!'
-    response = HttpResponse(message, status=200)
+    list_catalogs = es.get('_aliases').keys()
+    response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
+    message, status = json.dumps(response_list), 200
+
+    if len(list_catalogs) == 0:
+        message, status = 'Empty list of catalogs', 404
+
+    response = HttpResponse(message, status=status)
+
+    return response
+
+
+def readme_view(request):
+    with open('documentation.md') as f:
+        readme = f.readlines()
+
+    del(readme[3:5], readme[8])
+
+    response = HttpResponse(''.join(readme), status=200, content_type='text/plain')
 
     return response
 
 
 urlpatterns = [
-    url(r'^$', csw_view),
-    url(r'^(?P<catalog>\w+)?$', csw_view),
-    url(r'^catalogs/$', list_catalogs_view, name="list_catalogs"),
-    url(r'^(?P<catalog>[-\w]+)/api/$', search_view, name="search_api"),
-    url(r'^(?P<catalog>[-\w]+)/insert$', insert_catalog_view, name="insert_catalog"),
-    url(r'^(?P<catalog>[-\w]+)/layer/(?P<layer_id>\d+)(?P<path_info>/.*)$',
-        layer_mapproxy,
-        name='layer_mapproxy'),
+    url(r'^$', readme_view),
+    url(r'^csw$', csw_view),
+    url(r'^api$', search_view),
+    url(r'^catalog$', list_catalogs_view),
+    url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
+    url(r'^catalog/(?P<catalog>\w+)/api$', search_view),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).yml$', layer_yml_view, name="layer_yml"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).png$', layer_png_view, name="layer_png"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).xml$', layer_xml_view, name="layer_xml"),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12})(?P<path_info>/.*)$', layer_mapproxy),
 ]
 
 

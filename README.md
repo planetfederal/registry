@@ -67,24 +67,65 @@ Usage
 	python registry.py runserver
 	```
 
-2. Create synthetic information.
+2. List catalogs
 	```sh
-	python -c "from test_registry import construct_payload; print construct_payload(records_number=10);" > payload.xml
+	curl http://localhost:8000/catalog
 	```
 
-3. Add records into the database and search engine via CSW-T
+3. Create catalog using registry API
 	```sh
-	curl -XPOST -d @payload.xml  http://localhost:8000/<catalog_slug>
+	curl -XPUT http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
-4. Search api endpoint.
+4. Add records into the database and search engine via CSW-T
+	```sh
+	curl -XPOST -d @payload.xml  http://localhost:8000/catalog/<catalog_slug>/csw
+	```
+
+	**Note.** You cannot records to Registry if catalog has not been created before.
+
+5. Search api endpoint.
+
+	- For all records.
+
+		```sh
+		curl http://localhost:8000/api/
+		```
+
+	- For a single catalog.
+
+		```sh
+		curl http://localhost:8000/catalog/<catalog_slug>/api/
+		```
+
+6. Get record from csw.
 
 	```sh
-	curl http://localhost:8000/registry/api/
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.xml
+	```
+
+7. Get mapproxy yaml configuration file.
+
+	```sh
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.yml
+	```
+
+8. Get mapproxy png.
+
+	```sh
+	curl -XGET http://localhost:8000/layer/<layer_uuid>.png
+	```
+
+0. Delete catalog.
+
+	```sh
+	curl -XDELETE http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
 You should see the indexed information. The ```a.matchDocs``` value refers
 to the number of layers returned by the search api.
+
+**Note.** In registry, is possible to read all catalogs and layers. However, the catalog slug is necessary in order to add layers.
 
 
 Testing
@@ -94,9 +135,9 @@ Testing
 
 2. Run tests
 
-```sh
-python setup.py test
-```
+	```sh
+	python setup.py test
+	```
 
 
 Troubleshooting
@@ -120,6 +161,28 @@ Troubleshooting
 
 	**Reason:** Records have been added previously into the database.
 
+3. To debug mapproxy for a single layer.
+
+	- Install mapproxy locally.
+
+		```sh
+		pip install MapProxy==1.9.0
+		```
+
+	- Retreive from registry the yaml configuration file and copy.
+
+		```sh
+		curl http://localhost:8000/layer/<layer_uuid>.yml > layer.yml
+		```
+
+	- Create mapproxy local server using the downloaded configuration file. The server will listen port 8080
+
+		```sh
+		mapproxy-util serve-develop layer.yml
+		```
+
+	- Navigate through mapproxy web server and check the logs in terminal.
+
 
 Features
 ========
@@ -128,4 +191,4 @@ Features
  - [x] Mirror information to Elasticsearch for faster searches
  - [x] OpenSearch based API to enable the use of facets on different fields (extending CSW standard).
  - [x] MapProxy support for easy TMS/WMTS access to any kind of resource
- - [ ] Multi-catalog support.
+ - [x] Multi-catalog support.

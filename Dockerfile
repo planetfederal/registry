@@ -22,4 +22,6 @@ ADD . /code/
 
 EXPOSE 8000
 
+RUN python registry.py pycsw -c setup_db
+
 CMD ["python", "registry.py", "runserver", "0.0.0.0:8000"]
