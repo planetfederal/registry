@@ -235,8 +235,8 @@ def csw_view(request, catalog=None):
         return HttpResponse(message, status=200)
 
     if catalog and request.META['REQUEST_METHOD'] == 'DELETE':
-        message = delete_index(catalog)
-        return HttpResponse(message, status=200)
+        message, status = delete_index(catalog)
+        return HttpResponse(message, status=status)
 
     env = request.META.copy()
     env.update({'local.app_root': os.path.dirname(__file__),
@@ -268,11 +268,11 @@ def delete_index(catalog, es=None):
 
     try:
         es.delete(catalog)
-        message = 'Catalog {0} removed succesfully'.format(catalog)
+        message, status = 'Catalog {0} removed succesfully'.format(catalog), 200
     except ElasticException:
-        message = 'Catalog does not exist!'
+        message, status = 'Catalog does not exist!', 404
 
-    return message
+    return message, status
 
 
 def record_to_dict(record):

@@ -4,7 +4,6 @@ import random
 import rawes
 import registry
 import requests
-import time
 from datetime import datetime
 from django.test import RequestFactory
 from pycsw.core import config
@@ -12,10 +11,8 @@ from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
 
 catalog_slug = 'test'
-get_records_url = '/csw?service=CSW&version=2.0.2&request=' \
-                  'GetRecords&typenames=csw:Record&elementsetname=full' \
+catalog_search_api = '/catalog/{0}/api'.format(catalog_slug)
 
-search_url = '%s/_search' % (registry.REGISTRY_SEARCH_URL)
 default_params = {
     "q_time": "[* TO *]",
     "q_geo": "[-90,-180 TO 90,180]",
@@ -196,85 +193,46 @@ def get_number_records(request):
     return int(search_results.attrib['numberOfRecordsMatched'])
 
 
-@pytest.yield_fixture
-def clear_records():
-    '''
-    Function that clears records for both database and search backend.
-    '''
-    es = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    for item in es.get('_aliases').keys():
-        es.delete(item)
-    registry.create_index(catalog_slug)
-    context = config.StaticContext()
-    delete_records(context,
-                   registry.PYCSW['repository']['database'],
-                   registry.PYCSW['repository']['table'])
-    yield
-    registry.delete_index(catalog_slug)
-    delete_records(context,
-                   registry.PYCSW['repository']['database'],
-                   registry.PYCSW['repository']['table'])
+def test_create_catalog(client):
+    # Test empty list of catalogs.
+    response = client.get('/catalog')
+    assert 404 == response.status_code
+    assert 'Empty' in response.content.decode('utf-8')
+
+    response = client.put('/catalog/{0}/csw'.format(catalog_slug))
+    assert 200 == response.status_code
+    assert 'created' in response.content.decode('utf-8')
+
+    # List indices.
+    response = client.get('/catalog')
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == len(results)
 
 
-def test_single_transaction(client, clear_records):
-    '''
-    Test single csw transaction.
-    '''
-    payload = construct_payload(records_number=1)
+def test_create_transaction(client):
+    # Create payload and insert data into both pycsw database and elasticsearch.
+    payload = construct_payload(layers_list=layers_list)
     response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
-    response = client.get(get_records_url)
-    number_records_matched = get_number_records(response)
+    # Provisional hack to refresh documents in elasticsearch.
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.post('/_refresh')
+
+    # Verify records have been added into both pycsw.
+    repository = registry.RegistryRepository()
+    records_number = int(repository.query('')[0])
+    assert len(layers_list) == records_number
+
+    # Verify records added into elasticsearch using the search api.
+    response = client.get(catalog_search_api)
     assert 200 == response.status_code
-    assert 1 == number_records_matched
-
-    # Give backend some time.
-    time.sleep(3)
-
-    search_response = requests.get(search_url)
-    search_response = search_response.json()
-    assert 'hits' in search_response
-    assert 'total' in search_response['hits']
-    assert 1 == search_response['hits']['total']
-
-    # Delete empty catalog
-    response = client.delete('/catalog/not_catalog/csw')
-    assert 200 == response.status_code
-    assert 'Catalog does not exist!' == response.content.decode('utf-8')
+    search_response = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == search_response['a.matchDocs']
 
 
-def test_multiple_transactions(client, clear_records):
-    '''
-    Test multiple csw transactions.
-    '''
-    records_number = 10
-    payload = construct_payload(records_number=records_number)
-
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    assert 200 == response.status_code
-
-    response = client.get(get_records_url)
-    number_records_matched = get_number_records(response)
-    assert 200 == response.status_code
-    assert records_number == number_records_matched
-
-    # Give backend some time.
-    time.sleep(5)
-
-    search_response = requests.get(search_url)
-    search_response = search_response.json()
-    assert 'hits' in search_response
-    assert 'total' in search_response['hits']
-    assert records_number == search_response['hits']['total']
-
-
-def test_parse_params(client, clear_records):
-    payload = construct_payload(records_number=1)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    assert 200 == response.status_code
-    time.sleep(2)
-
+def test_parse_params(client):
     params_test = {
         "q.time": "[* TO *]",
         "q.geo": "[-90,-180 TO 90,180]",
@@ -283,48 +241,16 @@ def test_parse_params(client, clear_records):
         "d.docs.sort": "score"
     }
 
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
-    response = client.get(api_url, params_test)
-    assert 200 == response.status_code
-
     factory = RequestFactory()
-    req = factory.get(api_url, params_test)
-    parsed_url_keys = registry.parse_get_params(req).keys()
+    request = factory.get(catalog_search_api, params_test)
+    parsed_url_keys = registry.parse_get_params(request).keys()
 
     assert_dots = ['.' in key for key in parsed_url_keys]
     assert False in assert_dots
 
 
-def test_catalogs(client):
-    catalogs = ['catalog_1', 'catalog_2', 'catalog_3']
-    for catalog in catalogs:
-        response = client.put('/catalog/{0}/csw'.format(catalog))
-        assert 200 == response.status_code
-        assert 'Catalog {0} created succesfully'.format(catalog) == response.content.decode('utf-8')
-
-    time.sleep(5)
-    # List indices.
-    response = client.get('/catalog')
-    assert 200 == response.status_code
-    results = json.loads(response.content.decode('utf-8'))
-    assert len(catalogs) == len(results)
-
-    for catalog in catalogs:
-        client.delete('/catalog/{0}/csw'.format(catalog))
-
-    # Test empty list of catalogs.
-    response = client.get('/catalog')
-    assert 404 == response.status_code
-    assert 'Empty' in response.content.decode('utf-8')
-
-
-def test_search_api(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
-    response = client.get(api_url, default_params)
+def test_search_api(client):
+    response = client.get(catalog_search_api, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
@@ -332,13 +258,13 @@ def test_search_api(client, clear_records):
     # Test invalidated d_docs_page.
     params = default_params.copy()
     params['d_docs_page'] = -1
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 400 == response.status_code
     params.pop('d_docs_page', None)
 
     # Test wrong search engine url.
     params['search_engine_endpoint'] = 'http://wrong.url:9200'
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
@@ -348,7 +274,7 @@ def test_search_api(client, clear_records):
     # Sort time
     params.pop('search_engine_endpoint', None)
     params['d_docs_sort'] = 'time'
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     docs = results['d.docs']
@@ -360,8 +286,8 @@ def test_search_api(client, clear_records):
 
     # Test 400 error giving wrong search index.
     params = default_params.copy()
-    api_url = '/catalog/{0}/api'.format('wrong_index')
-    response = client.get(api_url, params)
+    wrong_search_endpoint = '/catalog/{0}/api'.format('wrong_index')
+    response = client.get(wrong_search_endpoint, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
@@ -370,39 +296,29 @@ def test_search_api(client, clear_records):
 
     # Test for original response.
     params['original_response'] = 1
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
 
 
-def test_q_text_keywords(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
+def test_q_text_keywords(client):
     params = default_params.copy()
     params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
     params["d_docs_limit"] = 100
 
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
 
 
-def test_q_text(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
+def test_q_text(client):
     params = default_params.copy()
     params["q_text"] = "title:\"{0}\"".format(layers_list[0]['title'])
     params["d_docs_limit"] = 100
 
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
@@ -411,18 +327,13 @@ def test_q_text(client, clear_records):
         assert layers_list[0]['title'] == doc['title']
 
 
-def test_q_user(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
+def test_q_user(client):
     params = default_params.copy()
     query_user = "user_1"
     params["q_user"] = query_user
     params["d_docs_limit"] = 100
 
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
@@ -431,67 +342,57 @@ def test_q_user(client, clear_records):
         assert query_user == doc['layer_originator']
 
 
-def test_q_geo(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
+def test_q_geo(client):
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
     # top right square
     params["q_geo"] = "[0,0 TO 30,30]"
 
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
     # Bottom left
     params["q_geo"] = "[-30,-30 TO 0,0]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
     # big square
     params["q_geo"] = "[-30,-30 TO 30,30]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 4 == results['a.matchDocs']
 
     # center where no layers
     params["q_geo"] = "[-5,-5 TO 5,5]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 0 == results['a.matchDocs']
 
     # Wrong format
     params["q_geo"] = "[-5,-5 5,5]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 400 == response.status_code
 
 
-def test_q_time(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
-    api_url = '/catalog/{0}/api'.format(catalog_slug)
+def test_q_time(client):
     params = default_params.copy()
     params["d_docs_limit"] = 100
 
     # test validations
     params["q_time"] = "[2000-01-01 - 2001-01-01T00:00:00]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 400 == response.status_code
 
     # Test asterisks.
     params["q_time"] = "[* TO *]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
@@ -499,19 +400,19 @@ def test_q_time(client, clear_records):
     # test range
     # entire year 2000
     params["q_time"] = "[2000-01-01 TO 2001-01-01T00:00:00]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
     params["q_time"] = "[* TO 2001-01-01T00:00:00]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
     params["q_time"] = "[2000-01-01 TO *]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
@@ -519,7 +420,7 @@ def test_q_time(client, clear_records):
     # Test error when q_time is not given.
     params["a_time_limit"] = 1
     params.pop('q_time', None)
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
@@ -529,7 +430,7 @@ def test_q_time(client, clear_records):
 
     # Test error when a_time_gap is not given.
     params["q_time"] = "[* TO *]"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
@@ -539,7 +440,7 @@ def test_q_time(client, clear_records):
 
     # test complete min and max when q time is asterisks.
     params["a_time_gap"] = "P1Y"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
@@ -548,7 +449,7 @@ def test_q_time(client, clear_records):
 
     # Test histograms generation using time values.
     params["a_time_gap"] = "PT24H"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
@@ -558,20 +459,20 @@ def test_q_time(client, clear_records):
     # Test wrong values for a_time_gap.
     params["a_time_gap"] = "P1ye"
     with pytest.raises(Exception) as excinfo:
-        response = client.get(api_url, params)
+        response = client.get(catalog_search_api, params)
     assert 'Does not match' in str(excinfo.value)
 
     # Test wrong values for a_time_gap.
     params["a_time_gap"] = "PT2h"
     with pytest.raises(Exception) as excinfo:
-        response = client.get(api_url, params)
+        response = client.get(catalog_search_api, params)
     assert 'Does not match' in str(excinfo.value)
 
     # test facets
     params["q_time"] = "[2000 TO 2022]"
     params["a_time_limit"] = 1
     params["a_time_gap"] = "P1Y"
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
 
     results = json.loads(response.content.decode('utf-8'))
@@ -580,11 +481,7 @@ def test_q_time(client, clear_records):
     assert len(results["a.time"]["counts"]) == len(layers_list)
 
 
-def test_mapproxy(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    time.sleep(5)
-
+def test_mapproxy(client):
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170.yml'
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
@@ -622,34 +519,6 @@ def test_mapproxy(client, clear_records):
     assert 200 == response.status_code
 
 
-def test_elasticsearch(client, clear_records):
-    # Test when there is no connection in elasticsearch, add records to pycsw.
-    payload = construct_payload(records_number=1)
-    temp = registry.REGISTRY_SEARCH_URL
-    registry.REGISTRY_SEARCH_URL = 'http://localhost:9500'
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-
-    response = client.get(get_records_url)
-    number_records_matched = get_number_records(response)
-    assert 200 == response.status_code
-    assert 1 == number_records_matched
-    registry.REGISTRY_SEARCH_URL = temp
-
-    payload = construct_payload(records_number=3)
-    response = client.post('/catalog/not_es/csw'.format(catalog_slug), payload, content_type='text/xml')
-    assert 200 == response.status_code
-
-    wrong_bbox_record = layers_list[0]
-    wrong_bbox_record['upper_corner_1'] = wrong_bbox_record['upper_corner_1'] + 5000
-    wrong_bbox_record['upper_corner_2'] = wrong_bbox_record['upper_corner_2'] + 5000
-    wrong_bbox_record['lower_corner_1'] = wrong_bbox_record['lower_corner_1'] + 5000
-    wrong_bbox_record['lower_corner_2'] = wrong_bbox_record['lower_corner_2'] + 5000
-
-    payload = construct_payload(layers_list=[wrong_bbox_record])
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    assert 200 == response.status_code
-
-
 def test_vcaps(client):
     SAMPLE_VCAPS = r"""{
         "searchly": [
@@ -670,11 +539,7 @@ def test_vcaps(client):
     assert registry_url == 'https://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io'
 
 
-def test_utilities(client, clear_records):
-    payload = construct_payload(records_number=1)
-    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
-    assert 200 == response.status_code
-
+def test_utilities(client):
     # Hit the docs.
     response = client.get('/')
     assert 200 == response.status_code
@@ -726,6 +591,54 @@ def test_bad_mapproxy_config(client):
     with pytest.raises(registry.ConfigurationError) as excinfo:
         registry.configure_mapproxy({}, ignore_warnings=False)
     assert 'invalid configuration' in str(excinfo.value)
+
+
+def test_clear_records(client):
+    response = client.delete('/catalog/{0}/csw'.format(catalog_slug))
+    assert 200 == response.status_code
+    assert 'removed' in response.content.decode('utf-8')
+
+    # Delete records in pycsw database.
+    context = config.StaticContext()
+    delete_records(context,
+                   registry.PYCSW['repository']['database'],
+                   registry.PYCSW['repository']['table'])
+
+    # Delete a catalog that has not been created previosuly.
+    response = client.delete('/catalog/boom/csw')
+    assert 404 == response.status_code
+    assert 'does not exist' in response.content.decode('utf-8')
+
+
+def test_elasticsearch(client):
+    test_create_catalog(client)
+
+    # Test when there is no connection in elasticsearch, add records to pycsw.
+    payload = construct_payload(records_number=1)
+    temp = registry.REGISTRY_SEARCH_URL
+    registry.REGISTRY_SEARCH_URL = 'http://localhost:9500'
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+
+    repository = registry.RegistryRepository()
+    number_records_matched = int(repository.query('')[0])
+    assert 1 == number_records_matched
+    registry.REGISTRY_SEARCH_URL = temp
+
+    payload = construct_payload(records_number=3)
+    response = client.post('/catalog/not_es/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    wrong_bbox_record = layers_list[0]
+    wrong_bbox_record['upper_corner_1'] = wrong_bbox_record['upper_corner_1'] + 5000
+    wrong_bbox_record['upper_corner_2'] = wrong_bbox_record['upper_corner_2'] + 5000
+    wrong_bbox_record['lower_corner_1'] = wrong_bbox_record['lower_corner_1'] + 5000
+    wrong_bbox_record['lower_corner_2'] = wrong_bbox_record['lower_corner_2'] + 5000
+
+    payload = construct_payload(layers_list=[wrong_bbox_record])
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    test_clear_records(client)
 
 
 if __name__ == '__main__':
