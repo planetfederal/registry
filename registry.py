@@ -276,8 +276,10 @@ def delete_index(catalog, es=None):
 
 
 def record_to_dict(record):
-    # TODO: check for correct order.
-    bbox = wkt2geom(record.wkt_geometry)
+    # Get bounding box from wkt geometry if it exists in the record.
+    bbox = (-180, -90, 180, 90)
+    if record.wkt_geometry:
+        bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
     record_dict = {
         'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
