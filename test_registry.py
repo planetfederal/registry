@@ -11,7 +11,7 @@ from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
 
 catalog_slug = 'test'
-catalog_search_api = '/catalog/{0}/api'.format(catalog_slug)
+catalog_search_api = '/catalog/{0}/api/'.format(catalog_slug)
 
 default_params = {
     "q_time": "[* TO *]",
@@ -286,7 +286,7 @@ def test_search_api(client):
 
     # Test 400 error giving wrong search index.
     params = default_params.copy()
-    wrong_search_endpoint = '/catalog/{0}/api'.format('wrong_index')
+    wrong_search_endpoint = '/catalog/{0}/api/'.format('wrong_index')
     response = client.get(wrong_search_endpoint, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
