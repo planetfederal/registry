@@ -630,7 +630,7 @@ def test_elasticsearch(client):
     response = client.post('/catalog/not_es/csw'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
-    wrong_bbox_record = layers_list[0].copy()
+    wrong_bbox_record = layers_list[0]
     wrong_bbox_record['upper_corner_1'] = wrong_bbox_record['upper_corner_1'] + 5000
     wrong_bbox_record['upper_corner_2'] = wrong_bbox_record['upper_corner_2'] + 5000
     wrong_bbox_record['lower_corner_1'] = wrong_bbox_record['lower_corner_1'] + 5000
@@ -642,31 +642,6 @@ def test_elasticsearch(client):
 
     test_clear_records(client)
 
-
-def test_load_records(client):
-    test_create_catalog(client)
-
-    repository = registry.RegistryRepository()
-    repository.catalog = catalog_slug
-    payload = construct_payload(layers_list=layers_list)
-    xml_records = etree.fromstring(payload)
-    context = config.StaticContext()
-
-    registry.load_records(repository, xml_records, context)
-    # Provisional hack to refresh documents in elasticsearch.
-    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    es_client.post('/_refresh')
-
-    records_number = int(repository.query('')[0])
-    assert len(layers_list) == records_number
-
-    # Verify records added into elasticsearch using the search api.
-    response = client.get(catalog_search_api)
-    assert 200 == response.status_code
-    search_response = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == search_response['a.matchDocs']
-
-    test_clear_records(client)
 
 if __name__ == '__main__':
     pytest.main()

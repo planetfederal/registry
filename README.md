@@ -77,18 +77,12 @@ Usage
 	curl -XPUT http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
-4. Add records into the database and search engine
-	- Using CSW transactions.
+4. Add records into the database and search engine via CSW-T
 	```sh
 	curl -XPOST -d @payload.xml  http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
 	**Note.** You cannot records to Registry if catalog has not been created before.
-
-	- From command line.
-	```sh
-	python registry.py pycsw -c load_records -p /records/files/path/ -g <catalog_slug>
-	```
 
 5. Search api endpoint.
 
