@@ -344,6 +344,21 @@ def test_q_user(client):
         assert query_user == doc['layer_originator']
 
 
+def test_q_uuid(client):
+    params = default_params.copy()
+    query_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
+    params["q_uuid"] = query_uuid
+    params["d_docs_limit"] = 100
+
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    for doc in results.get("d.docs", []):
+        assert query_uuid == doc['layer_identifier']
+
+
 def test_q_geo(client):
     params = default_params.copy()
     params["d_docs_limit"] = 100

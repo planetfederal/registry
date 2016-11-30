@@ -292,6 +292,7 @@ def record_to_dict(record):
         'max_y': max_y,
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
+        'layer_identifier': record.identifier,
         # 'rectangle': box(min_x, min_y, max_x, max_y),
         'layer_geoshape': {
             'type': 'envelope',
@@ -605,7 +606,10 @@ class SearchSerializer(serializers.Serializer):
         help_text="Endpoint URL",
         default=REGISTRY_SEARCH_URL
     )
-
+    q_uuid = serializers.CharField(
+        required=False,
+        help_text="Layer uuid"
+    )
     q_geo = serializers.CharField(
         required=False,
         help_text="A rectangular geospatial filter in decimal degrees going from the lower-left to the upper-right. "
@@ -741,6 +745,7 @@ def elasticsearch(serializer, catalog):
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
+    q_uuid = serializer.validated_data.get("q_uuid")
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
@@ -783,6 +788,26 @@ def elasticsearch(serializer, catalog):
 
         # add string searching
         must_array.append(query_string)
+
+    if q_uuid:
+        # Wrapping query string into a query filter.
+        query_string = {
+            "query_string": {
+                "query": q_uuid
+            }
+        }
+        if ES_VERSION < 2:
+            query_string = {
+                "query": {
+                    "query_string": {
+                        "query": q_uuid
+                    }
+                }
+            }
+
+        # add string searching
+        must_array.append(query_string)
+
 
     if q_time:
         # check if q_time exists
