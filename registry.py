@@ -276,7 +276,7 @@ def delete_index(catalog, es=None):
     return message, status
 
 
-def record_to_dict(record):
+def record_to_dict(record, domain=None):
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
     if record.wkt_geometry:
@@ -301,6 +301,12 @@ def record_to_dict(record):
             ]
         }
     }
+    if domain:
+        record_dict['links'] = {
+            'xml': '/'.join([domain, 'layer', record.identifier, 'xml']),
+            'yml': '/'.join([domain, 'layer', record.identifier, 'yml']),
+            'png': '/'.join([domain, 'layer', record.identifier, 'png'])
+        }
 
     return record_dict
 
@@ -361,18 +367,20 @@ def text_field(version, **kwargs):
     return field_def
 
 
-def parse_catalog_from_url(url):
+def parse_url(url):
     parsed_url = urlparse(url)
     catalog_slug = parsed_url.path.split('/')[2]
+    domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_url)
 
-    return catalog_slug
+    return catalog_slug, domain
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
+        self.catalog, self.domain = None, None
         if args and hasattr(args[0], 'url'):
             url = args[0].url
-            self.catalog = parse_catalog_from_url(url) if urlparse(url).path != '/csw' else None
+            self.catalog, self.domain = parse_url(url) if urlparse(url).path != '/csw' else None
 
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
@@ -393,7 +401,7 @@ class RegistryRepository(Repository):
             print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
             return
 
-        es_dict = record_to_dict(record)
+        es_dict = record_to_dict(record, self.domain)
         # TODO: Do not index wrong bounding boxes.
         try:
             self.es[self.catalog]['layer'].post(data=es_dict)
@@ -807,7 +815,6 @@ def elasticsearch(serializer, catalog):
 
         # add string searching
         must_array.append(query_string)
-
 
     if q_time:
         # check if q_time exists
