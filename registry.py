@@ -973,7 +973,7 @@ def search_view(request, catalog=None):
         data = error
         status = 400
 
-    return HttpResponse(data, status=status)
+    return HttpResponse(data, status=status, content_type='application/json')
 
 
 def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=False):
@@ -1303,7 +1303,7 @@ def list_catalogs_view(request):
     if len(list_catalogs) == 0:
         message, status = 'Empty list of catalogs', 404
 
-    response = HttpResponse(message, status=status)
+    response = HttpResponse(message, status=status, content_type='application/json')
 
     return response
 

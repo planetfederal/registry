@@ -208,6 +208,7 @@ def test_create_catalog(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == len(results)
+    assert response.get('Content-Type') == 'application/json'
 
 
 def test_create_transaction(client):
@@ -230,6 +231,7 @@ def test_create_transaction(client):
     assert 200 == response.status_code
     search_response = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == search_response['a.matchDocs']
+    assert response.get('Content-Type') == 'application/json'
 
 
 def test_parse_params(client):
