@@ -24,8 +24,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from pycsw import server
-from pycsw.core import config
+from pycsw.core import config, metadata
 from pycsw.core import admin as pycsw_admin
+from pycsw.core.etree import etree
 from pycsw.core.repository import Repository
 from pycsw.core.util import wkt2geom
 
@@ -368,9 +369,9 @@ def parse_catalog_from_url(url):
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        if args and urlparse(args[0].url).path != '/csw':
+        if args and hasattr(args[0], 'url'):
             url = args[0].url
-            self.catalog = parse_catalog_from_url(url)
+            self.catalog = parse_catalog_from_url(url) if urlparse(url).path != '/csw' else None
 
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
@@ -1319,6 +1320,15 @@ def readme_view(request):
     return response
 
 
+def load_records(repo, parsed_xml, context):
+    """Load metadata records from directory of files to database"""
+    xml_records = parsed_xml.xpath('//csw:Insert', namespaces=context.namespaces)[0]
+    parsed_records = xml_records.xpath('child::*')
+    parsed_records = [metadata.parse_record(context, f, repo)[0] for f in parsed_records]
+
+    [repo.insert(r, 'local', r.insert_date) for r in parsed_records]
+
+
 urlpatterns = [
     url(r'^$', readme_view),
     url(r'^csw$', csw_view),
@@ -1341,15 +1351,20 @@ if __name__ == '__main__':  # pragma: no cover
 
         OPTS, ARGS = getopt.getopt(sys.argv[2:], 'c:f:ho:p:ru:x:s:t:y')
 
+        xml_dirpath, catalog_slug = None, None
         for o, a in OPTS:
             if o == '-c':
                 COMMAND = a
+            elif o == '-p':
+                xml_dirpath = a
+            elif o == '-s':
+                catalog_slug = a
 
         database = PYCSW['repository']['database']
         table = PYCSW['repository']['table']
         home = PYCSW['server']['home']
 
-        available_commands = ['setup_db', 'get_sysprof']
+        available_commands = ['setup_db', 'get_sysprof', 'load_records']
 
         if COMMAND not in available_commands:
             print('pycsw supports only the following commands: %s' % available_commands)
@@ -1360,6 +1375,33 @@ if __name__ == '__main__':  # pragma: no cover
 
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())
+
+        elif COMMAND == 'load_records':
+            if os.path.isfile(xml_dirpath):
+                files_names = [xml_dirpath]
+            elif os.path.isdir(xml_dirpath):
+                files_names = [os.path.join(xml_dirpath, f) for f in os.listdir(xml_dirpath)]
+            else:
+                print('Undefined xml files path in command line input')
+                sys.exit(1)
+            if not catalog_slug:
+                print('Undefined catalog slug in command line input')
+                sys.exit(1)
+
+            # Create repository object with catalog slug.
+            context = config.StaticContext()
+            repo = RegistryRepository(PYCSW['repository']['database'],
+                                      context,
+                                      table=PYCSW['repository']['table'])
+            repo.catalog = catalog_slug
+
+            # Create index with mapping in Elasticsarch.
+            create_index(catalog_slug)
+
+            # Parse each xml file and insert records.
+            for xml_file in files_names:
+                parsed_xml = etree.parse(xml_file, context.parser)
+                load_records(repo, parsed_xml, context)
 
         sys.exit(0)
 
