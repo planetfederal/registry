@@ -265,7 +265,7 @@ def test_search_api(client):
     params.pop('d_docs_page', None)
 
     # Test wrong search engine url.
-    params['search_engine_endpoint'] = 'http://wrong.url:9200'
+    params['search_engine_endpoint'] = 'http://wrong.url:8000'
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -514,6 +514,12 @@ def test_mapproxy(client):
     assert 200 == response.status_code
     assert 'image/png' in response.serialize_headers().decode('utf-8')
 
+    # test the JSON view of the layer
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170.js'
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+    assert 'application/json' in response.serialize_headers().decode('utf-8')
+
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.yml'
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
@@ -552,7 +558,7 @@ def test_vcaps(client):
         ]
         }
     """
-    registry_url = registry.vcaps_search_url(SAMPLE_VCAPS, 'http://localhost:9200/')
+    registry_url = registry.vcaps_search_url(SAMPLE_VCAPS, 'http://localhost:8000/')
     assert registry_url == 'https://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io'
 
 

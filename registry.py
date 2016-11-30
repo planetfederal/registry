@@ -1029,7 +1029,7 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
     return conf
 
 
-def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
+def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
     """
@@ -1164,7 +1164,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     app = MapProxyApp(conf.configured_services(), conf.base_config)
 
     # Wrap it in an object that allows to get requests by path as a string.
-    return app, yaml_config
+    if(config_as_yaml):
+        return app, yaml_config
+
+    return app, extra_config
 
 
 def environ_from_url(path):
@@ -1220,6 +1223,26 @@ def layer_from_csw(layer_uuid):
         layer = layer_ids[0]
 
     return layer
+
+## Return the layer as JSON
+#
+#  @param request Input request from the user.
+#  @param layer_uuid Unique identifier of the layer.
+#
+#  @returns HttpResponse with the JSON content.
+#
+def layer_json_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
+
+    # Set up a mapproxy app for this particular layer
+    _, config = get_mapproxy(layer, config_as_yaml=False)
+    json_contents = json.dumps(config)
+
+    response = HttpResponse(json_contents, content_type='application/json')
+
+    return response
 
 
 def layer_yml_view(request, layer_uuid):
@@ -1361,6 +1384,7 @@ urlpatterns = [
     url(r'^catalog$', list_catalogs_view),
     url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
     url(r'^catalog/(?P<catalog>\w+)/api/$', search_view),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).js$', layer_json_view, name="layer_json"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).yml$', layer_yml_view, name="layer_yml"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).png$', layer_png_view, name="layer_png"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).xml$', layer_xml_view, name="layer_xml"),
