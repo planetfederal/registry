@@ -30,6 +30,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'title_alternate': '0',
         'i': 0,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -42,6 +43,7 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'title_alternate': '234',
         'i': 1,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -54,6 +56,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'title_alternate': '566',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -66,6 +69,7 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'title_alternate': '4234',
         'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -81,7 +85,7 @@ def get_xml_block(dictionary):
         '    <dc:title>%s</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
         '    <dc:type>%s</dc:type>\n'
-        '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
+        '    <dct:alternative>%s</dct:alternative>\n'
         '    <dct:modified>%s</dct:modified>\n'
         '    <dct:abstract>Augue purus abstractterm%d vehicula ridiculus eu donec et eget '
         'sit justo. Fames dolor ipsum dignissim aliquet. Proin massa congue '
@@ -118,6 +122,7 @@ def get_xml_block(dictionary):
          dictionary['title'],
          dictionary['creator'],
          dictionary['type'],
+         dictionary['title_alternate'],
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['i'],
          dictionary['identifier'],
@@ -145,6 +150,7 @@ def create_layers_list(records_number):
             'lower_corner_1': random.uniform(-90, 0),
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
+            'title_alternate': 'random_id',
             'i': item,
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
@@ -537,7 +543,7 @@ def test_mapproxy(client):
     assert 200 == response.status_code
 
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170/demo/?srs=EPSG' \
-                   '%3A3857&format=image%2Fpng&wms_layer=layer_1+titleterm1'
+                   '%3A3857&format=image%2Fpng&wms_layer=0'
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 
