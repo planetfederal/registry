@@ -11,7 +11,7 @@ from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
 
 catalog_slug = 'test'
-catalog_search_api = '/catalog/{0}/api'.format(catalog_slug)
+catalog_search_api = '/catalog/{0}/api/'.format(catalog_slug)
 
 default_params = {
     "q_time": "[* TO *]",
@@ -208,6 +208,7 @@ def test_create_catalog(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == len(results)
+    assert response.get('Content-Type') == 'application/json'
 
 
 def test_create_transaction(client):
@@ -230,6 +231,7 @@ def test_create_transaction(client):
     assert 200 == response.status_code
     search_response = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == search_response['a.matchDocs']
+    assert response.get('Content-Type') == 'application/json'
 
 
 def test_parse_params(client):
@@ -263,7 +265,7 @@ def test_search_api(client):
     params.pop('d_docs_page', None)
 
     # Test wrong search engine url.
-    params['search_engine_endpoint'] = 'http://wrong.url:9200'
+    params['search_engine_endpoint'] = 'http://wrong.url:8000'
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -286,7 +288,7 @@ def test_search_api(client):
 
     # Test 400 error giving wrong search index.
     params = default_params.copy()
-    wrong_search_endpoint = '/catalog/{0}/api'.format('wrong_index')
+    wrong_search_endpoint = '/catalog/{0}/api/'.format('wrong_index')
     response = client.get(wrong_search_endpoint, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
@@ -433,6 +435,21 @@ def test_q_user(client):
 
     for doc in results.get("d.docs", []):
         assert query_user == doc['layer_originator']
+
+
+def test_q_uuid(client):
+    params = default_params.copy()
+    query_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
+    params["q_uuid"] = query_uuid
+    params["d_docs_limit"] = 100
+
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    for doc in results.get("d.docs", []):
+        assert query_uuid == doc['layer_identifier']
 
 
 def test_q_geo(client):
@@ -590,6 +607,12 @@ def test_mapproxy(client):
     assert 200 == response.status_code
     assert 'image/png' in response.serialize_headers().decode('utf-8')
 
+    # test the JSON view of the layer
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170.js'
+    response = client.get(mapproxy_url)
+    assert 200 == response.status_code
+    assert 'application/json' in response.serialize_headers().decode('utf-8')
+
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.yml'
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
@@ -628,7 +651,7 @@ def test_vcaps(client):
         ]
         }
     """
-    registry_url = registry.vcaps_search_url(SAMPLE_VCAPS, 'http://localhost:9200/')
+    registry_url = registry.vcaps_search_url(SAMPLE_VCAPS, 'http://localhost:8000/')
     assert registry_url == 'https://cloudfoundry:f0d15584ef7b5dcd1c5c1794ef3506ec@api.searchbox.io'
 
 
@@ -721,7 +744,7 @@ def test_elasticsearch(client):
     response = client.post('/catalog/not_es/csw'.format(catalog_slug), payload, content_type='text/xml')
     assert 200 == response.status_code
 
-    wrong_bbox_record = layers_list[0]
+    wrong_bbox_record = layers_list[0].copy()
     wrong_bbox_record['upper_corner_1'] = wrong_bbox_record['upper_corner_1'] + 5000
     wrong_bbox_record['upper_corner_2'] = wrong_bbox_record['upper_corner_2'] + 5000
     wrong_bbox_record['lower_corner_1'] = wrong_bbox_record['lower_corner_1'] + 5000
@@ -733,6 +756,31 @@ def test_elasticsearch(client):
 
     test_clear_records(client)
 
+
+def test_load_records(client):
+    test_create_catalog(client)
+
+    repository = registry.RegistryRepository()
+    repository.catalog = catalog_slug
+    payload = construct_payload(layers_list=layers_list)
+    xml_records = etree.fromstring(payload)
+    context = config.StaticContext()
+
+    registry.load_records(repository, xml_records, context)
+    # Provisional hack to refresh documents in elasticsearch.
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.post('/_refresh')
+
+    records_number = int(repository.query('')[0])
+    assert len(layers_list) == records_number
+
+    # Verify records added into elasticsearch using the search api.
+    response = client.get(catalog_search_api)
+    assert 200 == response.status_code
+    search_response = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == search_response['a.matchDocs']
+
+    test_clear_records(client)
 
 if __name__ == '__main__':
     pytest.main()

@@ -24,8 +24,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from pycsw import server
-from pycsw.core import config
+from pycsw.core import config, metadata
 from pycsw.core import admin as pycsw_admin
+from pycsw.core.etree import etree
 from pycsw.core.repository import Repository
 from pycsw.core.util import wkt2geom
 
@@ -275,7 +276,7 @@ def delete_index(catalog, es=None):
     return message, status
 
 
-def record_to_dict(record):
+def record_to_dict(record, domain=None):
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
     if record.wkt_geometry:
@@ -291,6 +292,7 @@ def record_to_dict(record):
         'max_y': max_y,
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
+        'layer_identifier': record.identifier,
         # 'rectangle': box(min_x, min_y, max_x, max_y),
         'layer_geoshape': {
             'type': 'envelope',
@@ -299,6 +301,12 @@ def record_to_dict(record):
             ]
         }
     }
+    if domain:
+        record_dict['links'] = {
+            'xml': '/'.join([domain, 'layer', record.identifier, 'xml']),
+            'yml': '/'.join([domain, 'layer', record.identifier, 'yml']),
+            'png': '/'.join([domain, 'layer', record.identifier, 'png'])
+        }
 
     return record_dict
 
@@ -359,18 +367,20 @@ def text_field(version, **kwargs):
     return field_def
 
 
-def parse_catalog_from_url(url):
+def parse_url(url):
     parsed_url = urlparse(url)
     catalog_slug = parsed_url.path.split('/')[2]
+    domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_url)
 
-    return catalog_slug
+    return catalog_slug, domain
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        if args and urlparse(args[0].url).path != '/csw':
+        self.catalog, self.domain = None, None
+        if args and hasattr(args[0], 'url'):
             url = args[0].url
-            self.catalog = parse_catalog_from_url(url)
+            self.catalog, self.domain = parse_url(url) if urlparse(url).path != '/csw' else None
 
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
@@ -391,7 +401,7 @@ class RegistryRepository(Repository):
             print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
             return
 
-        es_dict = record_to_dict(record)
+        es_dict = record_to_dict(record, self.domain)
         # TODO: Do not index wrong bounding boxes.
         try:
             self.es[self.catalog]['layer'].post(data=es_dict)
@@ -604,7 +614,10 @@ class SearchSerializer(serializers.Serializer):
         help_text="Endpoint URL",
         default=REGISTRY_SEARCH_URL
     )
-
+    q_uuid = serializers.CharField(
+        required=False,
+        help_text="Layer uuid"
+    )
     q_geo = serializers.CharField(
         required=False,
         help_text="A rectangular geospatial filter in decimal degrees going from the lower-left to the upper-right. "
@@ -748,6 +761,7 @@ def elasticsearch(serializer, catalog):
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
+    q_uuid = serializer.validated_data.get("q_uuid")
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
@@ -788,6 +802,25 @@ def elasticsearch(serializer, catalog):
                         "fields": q_text_fields,
                         "query": q_text,
                         "use_dis_max": "true"
+                    }
+                }
+            }
+
+        # add string searching
+        must_array.append(query_string)
+
+    if q_uuid:
+        # Wrapping query string into a query filter.
+        query_string = {
+            "query_string": {
+                "query": q_uuid
+            }
+        }
+        if ES_VERSION < 2:
+            query_string = {
+                "query": {
+                    "query_string": {
+                        "query": q_uuid
                     }
                 }
             }
@@ -985,7 +1018,7 @@ def search_view(request, catalog=None):
         data = error
         status = 400
 
-    return HttpResponse(data, status=status)
+    return HttpResponse(data, status=status, content_type='application/json')
 
 
 def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=False):
@@ -1015,7 +1048,7 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
     return conf
 
 
-def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
+def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
     """
@@ -1150,7 +1183,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False):
     app = MapProxyApp(conf.configured_services(), conf.base_config)
 
     # Wrap it in an object that allows to get requests by path as a string.
-    return app, yaml_config
+    if(config_as_yaml):
+        return app, yaml_config
+
+    return app, extra_config
 
 
 def environ_from_url(path):
@@ -1206,6 +1242,26 @@ def layer_from_csw(layer_uuid):
         layer = layer_ids[0]
 
     return layer
+
+## Return the layer as JSON
+#
+#  @param request Input request from the user.
+#  @param layer_uuid Unique identifier of the layer.
+#
+#  @returns HttpResponse with the JSON content.
+#
+def layer_json_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
+
+    # Set up a mapproxy app for this particular layer
+    _, config = get_mapproxy(layer, config_as_yaml=False)
+    json_contents = json.dumps(config)
+
+    response = HttpResponse(json_contents, content_type='application/json')
+
+    return response
 
 
 def layer_yml_view(request, layer_uuid):
@@ -1315,7 +1371,7 @@ def list_catalogs_view(request):
     if len(list_catalogs) == 0:
         message, status = 'Empty list of catalogs', 404
 
-    response = HttpResponse(message, status=status)
+    response = HttpResponse(message, status=status, content_type='application/json')
 
     return response
 
@@ -1331,13 +1387,23 @@ def readme_view(request):
     return response
 
 
+def load_records(repo, parsed_xml, context):
+    """Load metadata records from directory of files to database"""
+    xml_records = parsed_xml.xpath('//csw:Insert', namespaces=context.namespaces)[0]
+    parsed_records = xml_records.xpath('child::*')
+    parsed_records = [metadata.parse_record(context, f, repo)[0] for f in parsed_records]
+
+    [repo.insert(r, 'local', r.insert_date) for r in parsed_records]
+
+
 urlpatterns = [
     url(r'^$', readme_view),
     url(r'^csw$', csw_view),
     url(r'^api$', search_view),
     url(r'^catalog$', list_catalogs_view),
     url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
-    url(r'^catalog/(?P<catalog>\w+)/api$', search_view),
+    url(r'^catalog/(?P<catalog>\w+)/api/$', search_view),
+    url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).js$', layer_json_view, name="layer_json"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).yml$', layer_yml_view, name="layer_yml"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).png$', layer_png_view, name="layer_png"),
     url(r'^layer/(?P<layer_uuid>[\w]{8}-[\w]{4}-[\w]{4}-[\w]{4}-[\w]{12}).xml$', layer_xml_view, name="layer_xml"),
@@ -1353,15 +1419,20 @@ if __name__ == '__main__':  # pragma: no cover
 
         OPTS, ARGS = getopt.getopt(sys.argv[2:], 'c:f:ho:p:ru:x:s:t:y')
 
+        xml_dirpath, catalog_slug = None, None
         for o, a in OPTS:
             if o == '-c':
                 COMMAND = a
+            elif o == '-p':
+                xml_dirpath = a
+            elif o == '-s':
+                catalog_slug = a
 
         database = PYCSW['repository']['database']
         table = PYCSW['repository']['table']
         home = PYCSW['server']['home']
 
-        available_commands = ['setup_db', 'get_sysprof']
+        available_commands = ['setup_db', 'get_sysprof', 'load_records']
 
         if COMMAND not in available_commands:
             print('pycsw supports only the following commands: %s' % available_commands)
@@ -1372,6 +1443,33 @@ if __name__ == '__main__':  # pragma: no cover
 
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())
+
+        elif COMMAND == 'load_records':
+            if os.path.isfile(xml_dirpath):
+                files_names = [xml_dirpath]
+            elif os.path.isdir(xml_dirpath):
+                files_names = [os.path.join(xml_dirpath, f) for f in os.listdir(xml_dirpath)]
+            else:
+                print('Undefined xml files path in command line input')
+                sys.exit(1)
+            if not catalog_slug:
+                print('Undefined catalog slug in command line input')
+                sys.exit(1)
+
+            # Create repository object with catalog slug.
+            context = config.StaticContext()
+            repo = RegistryRepository(PYCSW['repository']['database'],
+                                      context,
+                                      table=PYCSW['repository']['table'])
+            repo.catalog = catalog_slug
+
+            # Create index with mapping in Elasticsarch.
+            create_index(catalog_slug)
+
+            # Parse each xml file and insert records.
+            for xml_file in files_names:
+                parsed_xml = etree.parse(xml_file, context.parser)
+                load_records(repo, parsed_xml, context)
 
         sys.exit(0)
 
