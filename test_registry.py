@@ -327,48 +327,44 @@ def test_q_text(client):
         assert layers_list[0]['title'] == doc['title']
 
 
-def test_q_text_fields(client, clear_records):
-    payload = construct_payload(layers_list=layers_list)
-    response = client.post('/', payload, content_type='text/xml')
-    assert 200 == response.status_code
-    time.sleep(5)
-
+def test_q_text_fields(client):
     params = default_params.copy()
     params["q_text"] = "{0}".format("titleterm1")
     params["q_text_fields"] = "{0}".format("title")
     params["d_docs_limit"] = 100
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
     params["q_text"] = "{0}".format("volutpat")
     params["q_text_fields"] = "{0}".format("abstract")
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 4 == results['a.matchDocs']
 
     params["q_text"] = "{0} {1}".format("volutpat", "titleterm1")
     params["q_text_fields"] = "{0},{1}".format("title", "creator")
-    response = client.get(api_url, params)
+    response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 1 == results['a.matchDocs']
 
 
-def test_q_text_fields_boost(client, clear_records):
+def test_q_text_fields_boost(client):
+    test_clear_records(client)
+    test_create_catalog(client)
     layers = [
         {
             'identifier': 10,
-            'title': 'alpha',
+            'title': 'alpha alpha',
             'creator': 'beta',
-            'lower_corner_1': -40.0,
-            'upper_corner_1': -20.0,
-            'lower_corner_2': -40.0,
-            'upper_corner_2': -20.0,
+            'lower_corner_1': -1.0,
+            'upper_corner_1': -1.0,
+            'lower_corner_2': -1.0,
+            'upper_corner_2': -1.0,
             'i': 0,
             'type': 'ESRI:ArcGIS:ImageServer',
             'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -377,51 +373,51 @@ def test_q_text_fields_boost(client, clear_records):
             'identifier': 20,
             'title': 'beta',
             'creator': 'alpha',
-            'lower_corner_1': -40.0,
-            'upper_corner_1': -20.0,
-            'lower_corner_2': 40.0,
-            'upper_corner_2': 20.0,
+            'lower_corner_1': -2.0,
+            'upper_corner_1': -2.0,
+            'lower_corner_2': -2.0,
+            'upper_corner_2': -2.0,
             'i': 1,
             'type': 'ESRI:ArcGIS:ImageServer',
             'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
         }
     ]
     payload = construct_payload(layers_list=layers)
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    # Provisional hack to refresh documents in elasticsearch.
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.post('/_refresh')
     response = client.post('/', payload, content_type='text/xml')
     assert 200 == response.status_code
-    time.sleep(5)
 
-    # Boosting title will make doc 10 score higher
-    params = default_params.copy()
-    params["q_text"] = "{0}".format("alpha")
-    params["q_text_fields"] = "{0},{1}".format("title^8.0", "layer_originator^0.1")
-    params["d_docs_limit"] = 100
+    try:
+        # Boosting title will make doc 10 score higher
+        params = default_params.copy()
+        params["q_text"] = "{0}".format("alpha")
+        params["q_text_fields"] = "{0},{1}".format("title^9.0", "layer_originator^0.1")
+        params["d_docs_limit"] = 100
+        response = client.get(catalog_search_api, params)
+        assert 200 == response.status_code
+        results = json.loads(response.content.decode('utf-8'))
+        assert 2 == results['a.matchDocs']
+        assert layers[0]['title'] == results.get("d.docs", [])[0]['title']
+        assert layers[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
 
-    api_url = '/{0}/api/'.format(registry.REGISTRY_INDEX_NAME)
-    response = client.get(api_url, params)
-    assert 200 == response.status_code
-    results = json.loads(response.content.decode('utf-8'))
-    assert 2 == results['a.matchDocs']
-    assert layers[0]['title'] == results.get("d.docs", [])[0]['title']
-    assert layers[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
+        # Not Boosting title will make doc 20 score higher due to tf*idf
+        params["q_text_fields"] = "{0},{1}".format("title", "layer_originator")
+        response = client.get(catalog_search_api, params)
+        assert 200 == response.status_code
+        results = json.loads(response.content.decode('utf-8'))
+        assert 2 == results['a.matchDocs']
+        assert layers[0]['title'] == results.get("d.docs", [])[1]['title']
+        assert layers[1]['creator'] == results.get("d.docs", [])[0]['layer_originator']
 
-    # Boosting layer_originator will make doc 20 score higher on the same query
-    params["q_text_fields"] = "{0},{1}".format("title^0.1", "layer_originator^5.0")
-    response = client.get(api_url, params)
-    assert 200 == response.status_code
-    results = json.loads(response.content.decode('utf-8'))
-    assert 2 == results['a.matchDocs']
-    assert layers[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
-    assert layers[1]['title'] == results.get("d.docs", [])[1]['title']
-
-    # Not Boosting title enough will make doc 20 score higher
-    params["q_text_fields"] = "{0},{1}".format("title^6.0", "layer_originator^0.1")
-    response = client.get(api_url, params)
-    assert 200 == response.status_code
-    results = json.loads(response.content.decode('utf-8'))
-    assert 2 == results['a.matchDocs']
-    assert layers[0]['creator'] == results.get("d.docs", [])[0]['layer_originator']
-    assert layers[1]['title'] == results.get("d.docs", [])[1]['title']
+    finally:
+        test_clear_records(client)
+        test_create_catalog(client)
+        test_create_transaction(client)
 
 
 def test_q_user(client):
