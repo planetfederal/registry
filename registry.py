@@ -1035,6 +1035,21 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
     return conf
 
 
+LAYER_SRS_FOR_TYPE = {
+   'Hypermap:WARPER': 'EPSG:90013',
+   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+   'OGC:WMS': 'EPGS:4326'
+}
+
+GRID_SRS_FOR_TYPE = {
+   'Hypermap:WARPER': 'EPSG:90013',
+   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+   'OGC:WMS': 'EPGS:3857'
+}
+
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
@@ -1045,17 +1060,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
 
     layer_name = '{0}'.format(str(layer.title_alternate))
 
-    srs = 'EPSG:4326'
+    srs = LAYER_SRS_FOR_TYPE.get(layer.type, 'EPSG:4326')
+    grid_srs = GRID_SRS_FOR_TYPE.get(layer.type, 'EPSG:3857')
     bbox_srs = 'EPSG:4326'
-    grid_srs = 'EPSG:3857'
 
-    if layer.type == 'Hypermap:WARPER':
-        url = str(layer.url.replace("maps//wms", "maps/wms"))
-        grid_srs = 'EPSG:900913'
-        srs = 'EPSG:90013'
-
-    if layer.type == 'WM':
-        url = str(layer.url.replace("maps//wms", "maps/wms"))
 
     default_source = {
         'type': 'wms',
@@ -1108,10 +1116,20 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
         }
     }
 
+    # A cache that does not store for now. It needs a grid and a source.
+    # Do not enable cache before creating a ticket and discussing.
+    caches = {
+        'default_cache': {
+            'disable_storage': True,
+            'grids': ['default_grid'],
+            'sources': ['default_source']
+        },
+    }
+
     # The layer is connected to the cache
     layers = [
         {'name': layer_name,
-         'sources': ['default_source'],
+         'sources': ['default_cache'],
          'title': "%s" % layer.title,
          },
     ]
@@ -1151,6 +1169,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
 
     # Populate a dictionary with custom config changes
     extra_config = {
+        'caches': caches,
         'grids': grids,
         'layers': layers,
         'services': services,
