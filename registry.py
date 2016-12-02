@@ -1108,31 +1108,10 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
         }
     }
 
-    caches = {
-        'default_cache': {
-            'cache': {
-                'type': 'file',
-                'directory_layout': 'tms',
-                'directory': '{0}'.format(os.path.join(
-                    MAPPROXY_CACHE_DIR,
-                    'mapproxy',
-                    'layer',
-                    '%s' % layer.identifier,
-                    'map',
-                    'wmts',
-                    layer_name,
-                    'default_grid',
-                )),
-            },
-            'grids': ['default_grid'],
-            'sources': ['default_source']
-        },
-    }
-
     # The layer is connected to the cache
     layers = [
         {'name': layer_name,
-         'sources': ['default_cache'],
+         'sources': ['default_source'],
          'title': "%s" % layer.title,
          },
     ]
@@ -1172,7 +1151,6 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
 
     # Populate a dictionary with custom config changes
     extra_config = {
-        'caches': caches,
         'grids': grids,
         'layers': layers,
         'services': services,
