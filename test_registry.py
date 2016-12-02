@@ -534,6 +534,11 @@ def test_mapproxy(client):
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
 
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.js'
+    response = client.get(mapproxy_url)
+    assert 404 == response.status_code
+    assert 'not found' in response.content.decode('utf-8')
+
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171/'
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
