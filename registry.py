@@ -54,6 +54,7 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
+MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 
@@ -276,7 +277,7 @@ def delete_index(catalog, es=None):
     return message, status
 
 
-def record_to_dict(record, domain=None):
+def record_to_dict(record):
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
     if record.wkt_geometry:
@@ -285,14 +286,21 @@ def record_to_dict(record, domain=None):
     record_dict = {
         'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
         'abstract': record.abstract,
+        'title_alternate': record.title_alternate,
         'bbox': bbox,
         'min_x': min_x,
         'min_y': min_y,
         'max_x': max_x,
         'max_y': max_y,
+        'tile_url': '/layer/%s/wmts/%s/default_grid/{z}/{x}/{y}.png' % (record.identifier, record.title_alternate),
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
         'layer_identifier': record.identifier,
+        'links': {
+            'xml': '/'.join(['layer', record.identifier, 'xml']),
+            'yml': '/'.join(['layer', record.identifier, 'yml']),
+            'png': '/'.join(['layer', record.identifier, 'png'])
+        },
         # 'rectangle': box(min_x, min_y, max_x, max_y),
         'layer_geoshape': {
             'type': 'envelope',
@@ -301,13 +309,6 @@ def record_to_dict(record, domain=None):
             ]
         }
     }
-    if domain:
-        record_dict['links'] = {
-            'xml': '/'.join([domain, 'layer', record.identifier, 'xml']),
-            'yml': '/'.join([domain, 'layer', record.identifier, 'yml']),
-            'png': '/'.join([domain, 'layer', record.identifier, 'png'])
-        }
-
     return record_dict
 
 
@@ -370,18 +371,16 @@ def text_field(version, **kwargs):
 def parse_url(url):
     parsed_url = urlparse(url)
     catalog_slug = parsed_url.path.split('/')[2]
-    domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_url)
 
-    return catalog_slug, domain
+    return catalog_slug
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        self.catalog, self.domain = None, None
+        self.catalog = None
         if args and hasattr(args[0], 'url'):
             url = args[0].url
-            self.catalog, self.domain = parse_url(url) if urlparse(url).path != '/csw' else None
-
+            self.catalog = parse_url(url) if urlparse(url).path != '/csw' else None
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
             self.es_status = 200
@@ -401,7 +400,7 @@ class RegistryRepository(Repository):
             print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
             return
 
-        es_dict = record_to_dict(record, self.domain)
+        es_dict = record_to_dict(record)
         # TODO: Do not index wrong bounding boxes.
         try:
             self.es[self.catalog]['layer'].post(data=es_dict)
@@ -1036,6 +1035,21 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
     return conf
 
 
+LAYER_SRS_FOR_TYPE = {
+   'Hypermap:WARPER': 'EPSG:90013',
+   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+   'OGC:WMS': 'EPGS:4326'
+}
+
+GRID_SRS_FOR_TYPE = {
+   'Hypermap:WARPER': 'EPSG:90013',
+   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+   'OGC:WMS': 'EPGS:3857'
+}
+
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
@@ -1044,11 +1058,12 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     bbox = ",".join([format(x, '.4f') for x in bbox])
     url = str(layer.source)
 
-    layer_name = str(layer.title)
+    layer_name = '{0}'.format(str(layer.title_alternate))
 
-    srs = 'EPSG:4326'
+    srs = LAYER_SRS_FOR_TYPE.get(layer.type, 'EPSG:4326')
+    grid_srs = GRID_SRS_FOR_TYPE.get(layer.type, 'EPSG:3857')
     bbox_srs = 'EPSG:4326'
-    grid_srs = 'EPSG:3857'
+
 
     default_source = {
         'type': 'wms',
@@ -1059,7 +1074,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'supported_srs': ['EPSG:4326', 'EPSG:900913', 'EPSG:3857'],
         },
         'req': {
-            'layers': str(layer.title),
+            'layers': '{0}'.format(str(layer.title_alternate)),
             'url': url,
             'transparent': True,
         },
@@ -1102,6 +1117,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     }
 
     # A cache that does not store for now. It needs a grid and a source.
+    # Do not enable cache before creating a ticket and discussing.
     caches = {
         'default_cache': {
             'disable_storage': True,
@@ -1126,8 +1142,8 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
         'wms': {
             'image_formats': ['image/png'],
             'md': {
-                'abstract': 'This is the Harvard HyperMap Proxy.',
-                'title': 'Harvard HyperMap Proxy'
+                'abstract': layer.abstract,
+                'title': layer.title
             },
             'srs': ['EPSG:4326', 'EPSG:3857'],
             'srs_bbox': 'EPSG:4326',
@@ -1231,13 +1247,17 @@ def layer_from_csw(layer_uuid):
 
     return layer
 
-## Return the layer as JSON
-#
-#  @param request Input request from the user.
-#  @param layer_uuid Unique identifier of the layer.
-#
-#  @returns HttpResponse with the JSON content.
-#
+'''
+Return the layer as JSON
+
+    @param request Input request from the user.
+    @param layer_uuid Unique identifier of the layer.
+
+    @returns HttpResponse with the JSON content.
+
+'''
+
+
 def layer_json_view(request, layer_uuid):
     layer = layer_from_csw(layer_uuid)
     if not layer:
