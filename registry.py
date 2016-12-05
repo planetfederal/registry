@@ -277,6 +277,17 @@ def delete_index(catalog, es=None):
     return message, status
 
 
+def include_registry_tags(record_dict, xml_file,
+                          query_string='{http://gis.harvard.edu/HHypermap/registry/0.1}property'):
+
+    parsed = etree.fromstring(xml_file, etree.XMLParser(resolve_entities=False))
+    registry_tags = parsed.findall(query_string)
+    for tag in registry_tags:
+        record_dict[tag.attrib['name']] = tag.attrib['value'].encode('ascii', 'ignore').decode('utf-8')
+
+    return record_dict
+
+
 def record_to_dict(record):
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
@@ -309,6 +320,9 @@ def record_to_dict(record):
             ]
         }
     }
+
+    record_dict = include_registry_tags(record_dict, record.xml)
+
     return record_dict
 
 
@@ -1036,17 +1050,17 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
 
 
 LAYER_SRS_FOR_TYPE = {
-   'Hypermap:WARPER': 'EPSG:90013',
-   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
-   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
-   'OGC:WMS': 'EPGS:4326'
+    'Hypermap:WARPER': 'EPSG:90013',
+    'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+    'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+    'OGC:WMS': 'EPGS:4326'
 }
 
 GRID_SRS_FOR_TYPE = {
-   'Hypermap:WARPER': 'EPSG:90013',
-   'ESRI:ArcGIS:MapServer': 'EPSG:3857',
-   'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
-   'OGC:WMS': 'EPGS:3857'
+    'Hypermap:WARPER': 'EPSG:90013',
+    'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+    'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+    'OGC:WMS': 'EPGS:3857'
 }
 
 
@@ -1063,7 +1077,6 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     srs = LAYER_SRS_FOR_TYPE.get(layer.type, 'EPSG:4326')
     grid_srs = GRID_SRS_FOR_TYPE.get(layer.type, 'EPSG:3857')
     bbox_srs = 'EPSG:4326'
-
 
     default_source = {
         'type': 'wms',

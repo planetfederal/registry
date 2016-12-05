@@ -80,7 +80,7 @@ layers_list = [
 @pytest.mark.skip(reason='')
 def get_xml_block(dictionary):
     xml_block = (
-        '  <csw:Record>\n'
+        '  <csw:Record xmlns:registry="http://gis.harvard.edu/HHypermap/registry/0.1" >\n'
         '    <dc:identifier>%s</dc:identifier>\n'
         '    <dc:title>%s</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
@@ -110,6 +110,7 @@ def get_xml_block(dictionary):
         '    <dct:references scheme="ESRI:ArcGIS:MapServer">http://water.'
         'discomap.eea.europa.eu/arcgis/rest/services/Noise/2007_NOISE_END_'
         'LAEA_Contours/MapServer/?f=json</dct:references>\n'
+        '<registry:property name="ContactInformation/Primary/organization" value="NGA"/>\n'
         '    <dct:references scheme="WWW:LINK">http://localhost:8000/layer'
         '/%s/</dct:references>\n'
         '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
