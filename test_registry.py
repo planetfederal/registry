@@ -277,7 +277,7 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
-    assert 500 == es_status
+    assert 400 == es_status
     assert 'error' in data
 
     # Sort time
@@ -293,14 +293,14 @@ def test_search_api(client):
         first_year, second_year = item[0], item[1]
         assert first_year >= second_year
 
-    # Test 400 error giving wrong search index.
+    # Test 404 error giving wrong search index.
     params = default_params.copy()
     wrong_search_endpoint = '/catalog/{0}/api/'.format('wrong_index')
     response = client.get(wrong_search_endpoint, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
-    assert 400 == es_status
+    assert 404 == es_status
     assert 'error' in data
 
     # Test for original response.

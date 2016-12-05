@@ -625,7 +625,6 @@ class SearchSerializer(serializers.Serializer):
     search_engine_endpoint = serializers.CharField(
         required=False,
         help_text="Endpoint URL",
-        default=REGISTRY_SEARCH_URL
     )
     q_uuid = serializers.CharField(
         required=False,
@@ -757,11 +756,18 @@ def elasticsearch(serializer, catalog):
     :param serializer:
     :return:
     """
+    # Make sure elasticsearch connection is available.
+    es, version = es_connect(url=REGISTRY_SEARCH_URL)
+    es_version = int(version[0])
+
+    search_engine_endpoint = "_search"
+    if catalog:
+        search_engine_endpoint = "{0}/_search".format(catalog)
 
     search_endpoint = serializer.validated_data.get("search_engine_endpoint")
-    search_engine_endpoint = "{0}/_search".format(search_endpoint)
-    if catalog:
-        search_engine_endpoint = "{0}/{1}/_search".format(search_endpoint, catalog)
+    if search_endpoint is not None:
+        search_engine_endpoint = "{0}/{1}".format(search_endpoint, search_engine_endpoint)
+
     q_text = serializer.validated_data.get("q_text")
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
@@ -779,17 +785,6 @@ def elasticsearch(serializer, catalog):
     filter_dic = {}
     aggs_dic = {}
 
-    # get ES version to make the query builder to be backward compatible with
-    # diffs versions.
-    # TODO: move this to a proper place. maybe ES client?.
-    # TODO: cache it to avoid overwhelm ES with this call.
-    # TODO: ask for ES_VERSION when building queries with an elegant way.
-    ES_VERSION = 2
-    response = requests.get(REGISTRY_SEARCH_URL)
-    if response.ok:
-        # looks ugly but will work on normal ES response for "/".
-        ES_VERSION = int(response.json()["version"]["number"][0])
-
     # String searching
     if q_text:
         # Wrapping query string into a query filter.
@@ -798,7 +793,7 @@ def elasticsearch(serializer, catalog):
                 "query": q_text
             }
         }
-        if ES_VERSION < 2:
+        if es_version < 2:
             query_string = {
                 "query": {
                     "query_string": {
@@ -817,7 +812,7 @@ def elasticsearch(serializer, catalog):
                 "query": q_uuid
             }
         }
-        if ES_VERSION < 2:
+        if es_version < 2:
             query_string = {
                 "query": {
                     "query_string": {
@@ -894,7 +889,7 @@ def elasticsearch(serializer, catalog):
         }
     }
 
-    if ES_VERSION < 2:
+    if es_version < 2:
         dic_query = {
             "query": {
                 "filtered": {
@@ -946,23 +941,17 @@ def elasticsearch(serializer, catalog):
     # adding aggreations on body query
     if aggs_dic:
         dic_query['aggs'] = aggs_dic
+
     try:
-        res = requests.post(search_engine_endpoint, data=json.dumps(dic_query))
-    except Exception as e:
-        return 500, {"error": {"msg": str(e)}}
-
-    es_response = res.json()
-
+        es_response = es.post(search_engine_endpoint, data=dic_query)
+    except ElasticException as e:
+        return e.status_code, {"error": {"msg": str(e.args)}}
     if original_response:
         return es_response
 
     data = {}
 
-    if 'error' in es_response:
-        data["error"] = es_response["error"]
-        return 400, data
-
-    data["request_url"] = res.url
+    data["request_url"] = search_engine_endpoint
     data["request_body"] = json.dumps(dic_query)
     data["a.matchDocs"] = es_response['hits']['total']
     docs = []
