@@ -54,6 +54,7 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
+MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 
@@ -276,7 +277,21 @@ def delete_index(catalog, es=None):
     return message, status
 
 
-def record_to_dict(record, domain=None):
+def include_registry_tags(record_dict, xml_file,
+                          query_string='{http://gis.harvard.edu/HHypermap/registry/0.1}property'):
+
+    parsed = etree.fromstring(xml_file, etree.XMLParser(resolve_entities=False))
+    registry_tags = parsed.findall(query_string)
+
+    registry_dict = {}
+    for tag in registry_tags:
+        registry_dict[tag.attrib['name']] = tag.attrib['value'].encode('ascii', 'ignore').decode('utf-8')
+
+    record_dict['registry'] = registry_dict
+    return record_dict
+
+
+def record_to_dict(record):
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
     if record.wkt_geometry:
@@ -285,14 +300,21 @@ def record_to_dict(record, domain=None):
     record_dict = {
         'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
         'abstract': record.abstract,
+        'title_alternate': record.title_alternate,
         'bbox': bbox,
         'min_x': min_x,
         'min_y': min_y,
         'max_x': max_x,
         'max_y': max_y,
+        'tile_url': '/layer/%s/wmts/%s/default_grid/{z}/{x}/{y}.png' % (record.identifier, record.title_alternate),
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
         'layer_identifier': record.identifier,
+        'links': {
+            'xml': '/'.join(['layer', record.identifier, 'xml']),
+            'yml': '/'.join(['layer', record.identifier, 'yml']),
+            'png': '/'.join(['layer', record.identifier, 'png'])
+        },
         # 'rectangle': box(min_x, min_y, max_x, max_y),
         'layer_geoshape': {
             'type': 'envelope',
@@ -301,12 +323,8 @@ def record_to_dict(record, domain=None):
             ]
         }
     }
-    if domain:
-        record_dict['links'] = {
-            'xml': '/'.join([domain, 'layer', record.identifier, 'xml']),
-            'yml': '/'.join([domain, 'layer', record.identifier, 'yml']),
-            'png': '/'.join([domain, 'layer', record.identifier, 'png'])
-        }
+
+    record_dict = include_registry_tags(record_dict, record.xml)
 
     return record_dict
 
@@ -345,11 +363,13 @@ def es_mapping(version):
         "mappings": {
             "layer": {
                 "properties": {
+                    "registry": {"type": "nested"},
                     "layer_geoshape": {
                         "type": "geo_shape",
                         "tree": "quadtree",
                         "precision": REGISTRY_MAPPING_PRECISION
                     },
+                    "layer_identifier": {"type": "string", "index": "not_analyzed"},
                     "title": text_field(version, copy_to="alltext"),
                     "abstract": text_field(version, copy_to="alltext"),
                     "alltext": text_field(version)
@@ -370,18 +390,16 @@ def text_field(version, **kwargs):
 def parse_url(url):
     parsed_url = urlparse(url)
     catalog_slug = parsed_url.path.split('/')[2]
-    domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_url)
 
-    return catalog_slug, domain
+    return catalog_slug
 
 
 class RegistryRepository(Repository):
     def __init__(self, *args, **kwargs):
-        self.catalog, self.domain = None, None
+        self.catalog = None
         if args and hasattr(args[0], 'url'):
             url = args[0].url
-            self.catalog, self.domain = parse_url(url) if urlparse(url).path != '/csw' else None
-
+            self.catalog = parse_url(url) if urlparse(url).path != '/csw' else None
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
             self.es_status = 200
@@ -401,7 +419,7 @@ class RegistryRepository(Repository):
             print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
             return
 
-        es_dict = record_to_dict(record, self.domain)
+        es_dict = record_to_dict(record)
         # TODO: Do not index wrong bounding boxes.
         try:
             self.es[self.catalog]['layer'].post(data=es_dict)
@@ -612,7 +630,6 @@ class SearchSerializer(serializers.Serializer):
     search_engine_endpoint = serializers.CharField(
         required=False,
         help_text="Endpoint URL",
-        default=REGISTRY_SEARCH_URL
     )
     q_uuid = serializers.CharField(
         required=False,
@@ -628,6 +645,10 @@ class SearchSerializer(serializers.Serializer):
     q_text = serializers.CharField(
         required=False,
         help_text="Constrains docs by keyword search query."
+    )
+    q_registry_text = serializers.CharField(
+        required=False,
+        help_text="Registry keyword search query"
     )
     q_text_fields = serializers.CharField(
         required=False,
@@ -751,12 +772,20 @@ def elasticsearch(serializer, catalog):
     :param serializer:
     :return:
     """
+    # Make sure elasticsearch connection is available.
+    es, version = es_connect(url=REGISTRY_SEARCH_URL)
+    es_version = int(version[0])
+
+    search_engine_endpoint = "_search"
+    if catalog:
+        search_engine_endpoint = "{0}/_search".format(catalog)
 
     search_endpoint = serializer.validated_data.get("search_engine_endpoint")
-    search_engine_endpoint = "{0}/_search".format(search_endpoint)
-    if catalog:
-        search_engine_endpoint = "{0}/{1}/_search".format(search_endpoint, catalog)
+    if search_endpoint is not None:
+        search_engine_endpoint = "{0}/{1}".format(search_endpoint, search_engine_endpoint)
+
     q_text = serializer.validated_data.get("q_text")
+    q_registry_text = serializer.validated_data.get("q_registry_text")
     q_text_fields = serializer.validated_data.get("q_text_fields").split(',')
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
@@ -775,20 +804,8 @@ def elasticsearch(serializer, catalog):
     aggs_dic = {}
     text_search_dic = {"match_all": {}}
 
-    # get ES version to make the query builder to be backward compatible with
-    # diffs versions.
-    # TODO: move this to a proper place. maybe ES client?.
-    # TODO: cache it to avoid overwhelm ES with this call.
-    # TODO: ask for ES_VERSION when building queries with an elegant way.
-    ES_VERSION = 2
-    response = requests.get(REGISTRY_SEARCH_URL)
-    if response.ok:
-        # looks ugly but will work on normal ES response for "/".
-        ES_VERSION = int(response.json()["version"]["number"][0])
-
     # String searching
     if q_text:
-        # Wrapping query string into a query filter.
         query_string = {
             "query_string": {
                 "fields": q_text_fields,
@@ -796,30 +813,35 @@ def elasticsearch(serializer, catalog):
                 "use_dis_max": "true"
             }
         }
-        if ES_VERSION < 2:
+        if es_version < 2:
             text_search_dic = query_string
         else:
             # add string searching
             must_array.append(query_string)
 
-    if q_uuid:
-        # Wrapping query string into a query filter.
-        query_string = {
-            "query_string": {
-                "query": q_uuid
-            }
-        }
-        if ES_VERSION < 2:
-            query_string = {
+    if q_registry_text:
+        registry_filter = {
+            "nested": {
+                "path": "registry",
                 "query": {
-                    "query_string": {
-                        "query": q_uuid
+                    "multi_match": {
+                        "query": q_registry_text,
+                        "fields": ["registry.*"]
                     }
                 }
             }
+        }
 
-        # add string searching
-        must_array.append(query_string)
+        must_array.append(registry_filter)
+
+    if q_uuid:
+        # Using q_user
+        uuid_searching = {
+            "term": {
+                "layer_identifier": q_uuid
+            }
+        }
+        must_array.append(uuid_searching)
 
     if q_time:
         # check if q_time exists
@@ -886,7 +908,7 @@ def elasticsearch(serializer, catalog):
         }
     }
 
-    if ES_VERSION < 2:
+    if es_version < 2:
         dic_query = {
             "query": {
                 "filtered": {
@@ -939,23 +961,17 @@ def elasticsearch(serializer, catalog):
     # adding aggreations on body query
     if aggs_dic:
         dic_query['aggs'] = aggs_dic
+
     try:
-        res = requests.post(search_engine_endpoint, data=json.dumps(dic_query))
-    except Exception as e:
-        return 500, {"error": {"msg": str(e)}}
-
-    es_response = res.json()
-
+        es_response = es.post(search_engine_endpoint, data=dic_query)
+    except ElasticException as e:
+        return e.status_code, {"error": {"msg": str(e.args)}}
     if original_response:
         return es_response
 
     data = {}
 
-    if 'error' in es_response:
-        data["error"] = es_response["error"]
-        return 400, data
-
-    data["request_url"] = res.url
+    data["request_url"] = search_engine_endpoint
     data["request_body"] = json.dumps(dic_query)
     data["a.matchDocs"] = es_response['hits']['total']
     docs = []
@@ -1042,6 +1058,21 @@ def configure_mapproxy(extra_config, seed=False, ignore_warnings=True, renderd=F
     return conf
 
 
+LAYER_SRS_FOR_TYPE = {
+    'Hypermap:WARPER': 'EPSG:90013',
+    'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+    'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+    'OGC:WMS': 'EPGS:4326'
+}
+
+GRID_SRS_FOR_TYPE = {
+    'Hypermap:WARPER': 'EPSG:90013',
+    'ESRI:ArcGIS:MapServer': 'EPSG:3857',
+    'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
+    'OGC:WMS': 'EPGS:3857'
+}
+
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
@@ -1050,11 +1081,11 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     bbox = ",".join([format(x, '.4f') for x in bbox])
     url = str(layer.source)
 
-    layer_name = str(layer.title)
+    layer_name = '{0}'.format(str(layer.title_alternate))
 
-    srs = 'EPSG:4326'
+    srs = LAYER_SRS_FOR_TYPE.get(layer.type, 'EPSG:4326')
+    grid_srs = GRID_SRS_FOR_TYPE.get(layer.type, 'EPSG:3857')
     bbox_srs = 'EPSG:4326'
-    grid_srs = 'EPSG:3857'
 
     default_source = {
         'type': 'wms',
@@ -1065,7 +1096,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'supported_srs': ['EPSG:4326', 'EPSG:900913', 'EPSG:3857'],
         },
         'req': {
-            'layers': str(layer.title),
+            'layers': '{0}'.format(str(layer.title_alternate)),
             'url': url,
             'transparent': True,
         },
@@ -1108,6 +1139,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     }
 
     # A cache that does not store for now. It needs a grid and a source.
+    # Do not enable cache before creating a ticket and discussing.
     caches = {
         'default_cache': {
             'disable_storage': True,
@@ -1132,8 +1164,8 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
         'wms': {
             'image_formats': ['image/png'],
             'md': {
-                'abstract': 'This is the Harvard HyperMap Proxy.',
-                'title': 'Harvard HyperMap Proxy'
+                'abstract': layer.abstract,
+                'title': layer.title
             },
             'srs': ['EPSG:4326', 'EPSG:3857'],
             'srs_bbox': 'EPSG:4326',
@@ -1237,13 +1269,17 @@ def layer_from_csw(layer_uuid):
 
     return layer
 
-## Return the layer as JSON
-#
-#  @param request Input request from the user.
-#  @param layer_uuid Unique identifier of the layer.
-#
-#  @returns HttpResponse with the JSON content.
-#
+'''
+Return the layer as JSON
+
+    @param request Input request from the user.
+    @param layer_uuid Unique identifier of the layer.
+
+    @returns HttpResponse with the JSON content.
+
+'''
+
+
 def layer_json_view(request, layer_uuid):
     layer = layer_from_csw(layer_uuid)
     if not layer:

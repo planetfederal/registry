@@ -30,6 +30,8 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'title_alternate': '0',
+        'registry_tag': 'vehicula',
         'i': 0,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -42,6 +44,8 @@ layers_list = [
         'upper_corner_1': -20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'title_alternate': '234',
+        'registry_tag': 'tag_2',
         'i': 1,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -54,6 +58,8 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
+        'title_alternate': '566',
+        'registry_tag': 'vehicula',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -66,6 +72,8 @@ layers_list = [
         'upper_corner_1': 20.0,
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
+        'title_alternate': '4234',
+        'registry_tag': 'tag_2',
         'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -76,12 +84,12 @@ layers_list = [
 @pytest.mark.skip(reason='')
 def get_xml_block(dictionary):
     xml_block = (
-        '  <csw:Record>\n'
+        '  <csw:Record xmlns:registry="http://gis.harvard.edu/HHypermap/registry/0.1" >\n'
         '    <dc:identifier>%s</dc:identifier>\n'
         '    <dc:title>%s</dc:title>\n'
         '    <dc:creator>%s</dc:creator>\n'
         '    <dc:type>%s</dc:type>\n'
-        '    <dct:alternative>Fames magna sed.</dct:alternative>\n'
+        '    <dct:alternative>%s</dct:alternative>\n'
         '    <dct:modified>%s</dct:modified>\n'
         '    <dct:abstract>Augue purus abstractterm%d vehicula ridiculus eu donec et eget '
         'sit justo. Fames dolor ipsum dignissim aliquet. Proin massa congue '
@@ -106,6 +114,7 @@ def get_xml_block(dictionary):
         '    <dct:references scheme="ESRI:ArcGIS:MapServer">http://water.'
         'discomap.eea.europa.eu/arcgis/rest/services/Noise/2007_NOISE_END_'
         'LAEA_Contours/MapServer/?f=json</dct:references>\n'
+        '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
         '    <dct:references scheme="WWW:LINK">http://localhost:8000/layer'
         '/%s/</dct:references>\n'
         '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
@@ -118,9 +127,11 @@ def get_xml_block(dictionary):
          dictionary['title'],
          dictionary['creator'],
          dictionary['type'],
+         dictionary['title_alternate'],
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['i'],
          dictionary['identifier'],
+         dictionary['registry_tag'],
          dictionary['identifier'],
          dictionary['lower_corner_1'],
          dictionary['lower_corner_2'],
@@ -145,7 +156,9 @@ def create_layers_list(records_number):
             'lower_corner_1': random.uniform(-90, 0),
             'lower_corner_2': random.uniform(-180, 0),
             'upper_corner_1': random.uniform(0, 90),
+            'title_alternate': 'random_id',
             'i': item,
+            'registry_tag': 'random_tag',
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
     ]
@@ -270,7 +283,7 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
-    assert 500 == es_status
+    assert 400 == es_status
     assert 'error' in data
 
     # Sort time
@@ -286,14 +299,14 @@ def test_search_api(client):
         first_year, second_year = item[0], item[1]
         assert first_year >= second_year
 
-    # Test 400 error giving wrong search index.
+    # Test 404 error giving wrong search index.
     params = default_params.copy()
     wrong_search_endpoint = '/catalog/{0}/api/'.format('wrong_index')
     response = client.get(wrong_search_endpoint, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     es_status, data = results
-    assert 400 == es_status
+    assert 404 == es_status
     assert 'error' in data
 
     # Test for original response.
@@ -302,6 +315,22 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
+
+    # Test search within registry tags.
+    params = default_params.copy()
+    params["q_text"] = "vehicula"
+    params["d_docs_limit"] = 100
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+    # Saarch only in registry subfield.
+    params['q_registry_text'] = 'vehicula'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
 
 
 def test_q_text_keywords(client):
@@ -368,6 +397,8 @@ def test_q_text_fields_boost(client):
             'lower_corner_2': -1.0,
             'upper_corner_2': -1.0,
             'i': 0,
+            'title_alternate': '934',
+            'registry_tag': 'notag_1',
             'type': 'ESRI:ArcGIS:ImageServer',
             'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
         },
@@ -380,6 +411,8 @@ def test_q_text_fields_boost(client):
             'lower_corner_2': -2.0,
             'upper_corner_2': -2.0,
             'i': 1,
+            'title_alternate': '935',
+            'registry_tag': 'notag_2',
             'type': 'ESRI:ArcGIS:ImageServer',
             'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
         }
@@ -621,6 +654,11 @@ def test_mapproxy(client):
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
 
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171.js'
+    response = client.get(mapproxy_url)
+    assert 404 == response.status_code
+    assert 'not found' in response.content.decode('utf-8')
+
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5171/'
     response = client.get(mapproxy_url)
     assert 404 == response.status_code
@@ -630,7 +668,7 @@ def test_mapproxy(client):
     assert 200 == response.status_code
 
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170/demo/?srs=EPSG' \
-                   '%3A3857&format=image%2Fpng&wms_layer=layer_1+titleterm1'
+                   '%3A3857&format=image%2Fpng&wms_layer=0'
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
 

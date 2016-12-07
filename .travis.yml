@@ -4,6 +4,7 @@ cache: pip
 sudo: required
 dist: xenial
 
+
 python:
   - "2.7"
   - "3.5"
@@ -19,8 +20,11 @@ addons:
       - libxml2-dev
       - python-flake8
 
-before_install:
-  - curl -O $ES_URL$ES_DEB && sudo dpkg -i --force-confnew $ES_DEB && sudo service elasticsearch restart
+before_install: 
+  - jdk_switcher use oraclejdk8
+  - curl -O $ES_URL$ES_DEB
+  - sudo dpkg -i --force-confnew $ES_DEB
+  - sudo service elasticsearch restart
 
 install:
   - pip install -r requirements.txt
