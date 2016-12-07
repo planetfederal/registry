@@ -31,6 +31,7 @@ layers_list = [
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
         'title_alternate': '0',
+        'registry_tag': 'vehicula',
         'i': 0,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -44,6 +45,7 @@ layers_list = [
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
         'title_alternate': '234',
+        'registry_tag': 'tag_2',
         'i': 1,
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -57,6 +59,7 @@ layers_list = [
         'lower_corner_2': 40.0,
         'upper_corner_2': 20.0,
         'title_alternate': '566',
+        'registry_tag': 'vehicula',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -70,6 +73,7 @@ layers_list = [
         'lower_corner_2': -40.0,
         'upper_corner_2': -20.0,
         'title_alternate': '4234',
+        'registry_tag': 'tag_2',
         'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
@@ -110,7 +114,7 @@ def get_xml_block(dictionary):
         '    <dct:references scheme="ESRI:ArcGIS:MapServer">http://water.'
         'discomap.eea.europa.eu/arcgis/rest/services/Noise/2007_NOISE_END_'
         'LAEA_Contours/MapServer/?f=json</dct:references>\n'
-        '<registry:property name="ContactInformation/Primary/organization" value="NGA"/>\n'
+        '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
         '    <dct:references scheme="WWW:LINK">http://localhost:8000/layer'
         '/%s/</dct:references>\n'
         '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
@@ -127,6 +131,7 @@ def get_xml_block(dictionary):
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['i'],
          dictionary['identifier'],
+         dictionary['registry_tag'],
          dictionary['identifier'],
          dictionary['lower_corner_1'],
          dictionary['lower_corner_2'],
@@ -153,6 +158,7 @@ def create_layers_list(records_number):
             'upper_corner_1': random.uniform(0, 90),
             'title_alternate': 'random_id',
             'i': item,
+            'registry_tag': 'random_tag',
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
     ]
@@ -309,6 +315,22 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 'a.matchDocs' not in results
+
+    # Test search within registry tags.
+    params = default_params.copy()
+    params["q_text"] = "vehicula"
+    params["d_docs_limit"] = 100
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+    # Saarch only in registry subfield.
+    params['q_registry_text'] = 'vehicula'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
 
 
 def test_q_text_keywords(client):

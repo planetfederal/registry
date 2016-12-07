@@ -282,9 +282,12 @@ def include_registry_tags(record_dict, xml_file,
 
     parsed = etree.fromstring(xml_file, etree.XMLParser(resolve_entities=False))
     registry_tags = parsed.findall(query_string)
-    for tag in registry_tags:
-        record_dict[tag.attrib['name']] = tag.attrib['value'].encode('ascii', 'ignore').decode('utf-8')
 
+    registry_dict = {}
+    for tag in registry_tags:
+        registry_dict[tag.attrib['name']] = tag.attrib['value'].encode('ascii', 'ignore').decode('utf-8')
+
+    record_dict['registry'] = registry_dict
     return record_dict
 
 
@@ -360,6 +363,7 @@ def es_mapping(version):
         "mappings": {
             "layer": {
                 "properties": {
+                    "registry": {"type": "nested"},
                     "layer_geoshape": {
                         "type": "geo_shape",
                         "tree": "quadtree",
@@ -641,6 +645,10 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Constrains docs by keyword search query."
     )
+    q_registry_text = serializers.CharField(
+        required=False,
+        help_text="Registry keyword search query"
+    )
     q_user = serializers.CharField(
         required=False,
         help_text="Constrains docs by matching exactly a certain user."
@@ -769,6 +777,7 @@ def elasticsearch(serializer, catalog):
         search_engine_endpoint = "{0}/{1}".format(search_endpoint, search_engine_endpoint)
 
     q_text = serializer.validated_data.get("q_text")
+    q_registry_text = serializer.validated_data.get("q_registry_text")
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
@@ -804,6 +813,21 @@ def elasticsearch(serializer, catalog):
 
         # add string searching
         must_array.append(query_string)
+
+    if q_registry_text:
+        registry_filter = {
+            "nested": {
+                "path": "registry",
+                "query": {
+                    "multi_match": {
+                        "query": q_registry_text,
+                        "fields": ["registry.*"]
+                    }
+                }
+            }
+        }
+
+        must_array.append(registry_filter)
 
     if q_uuid:
         # Wrapping query string into a query filter.
