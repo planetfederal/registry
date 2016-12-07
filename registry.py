@@ -369,6 +369,7 @@ def es_mapping(version):
                         "tree": "quadtree",
                         "precision": REGISTRY_MAPPING_PRECISION
                     },
+                    "layer_identifier": {"type": "string", "index": "not_analyzed"},
                     "title": text_field(version, copy_to="alltext"),
                     "abstract": text_field(version, copy_to="alltext"),
                     "alltext": text_field(version)
@@ -796,7 +797,6 @@ def elasticsearch(serializer, catalog):
 
     # String searching
     if q_text:
-        # Wrapping query string into a query filter.
         query_string = {
             "query_string": {
                 "query": q_text
@@ -810,8 +810,6 @@ def elasticsearch(serializer, catalog):
                     }
                 }
             }
-
-        # add string searching
         must_array.append(query_string)
 
     if q_registry_text:
@@ -830,23 +828,13 @@ def elasticsearch(serializer, catalog):
         must_array.append(registry_filter)
 
     if q_uuid:
-        # Wrapping query string into a query filter.
-        query_string = {
-            "query_string": {
-                "query": q_uuid
+        # Using q_user
+        uuid_searching = {
+            "term": {
+                "layer_identifier": q_uuid
             }
         }
-        if es_version < 2:
-            query_string = {
-                "query": {
-                    "query_string": {
-                        "query": q_uuid
-                    }
-                }
-            }
-
-        # add string searching
-        must_array.append(query_string)
+        must_array.append(uuid_searching)
 
     if q_time:
         # check if q_time exists
