@@ -361,7 +361,7 @@ def test_q_text_fields_boost(client):
     layers = [
         {
             'identifier': 10,
-            'title': 'alpha alpha',
+            'title': 'alpha',
             'creator': 'beta',
             'lower_corner_1': -1.0,
             'upper_corner_1': -1.0,
@@ -398,7 +398,7 @@ def test_q_text_fields_boost(client):
         # Boosting title will make doc 10 score higher
         params = default_params.copy()
         params["q_text"] = "{0}".format("alpha")
-        params["q_text_fields"] = "{0},{1}".format("title^9.0", "layer_originator^0.1")
+        params["q_text_fields"] = "{0},{1}".format("title^999.0", "layer_originator^0.1")
         params["d_docs_limit"] = 100
         response = client.get(catalog_search_api, params)
         assert 200 == response.status_code
@@ -407,8 +407,8 @@ def test_q_text_fields_boost(client):
         assert layers[0]['title'] == results.get("d.docs", [])[0]['title']
         assert layers[1]['creator'] == results.get("d.docs", [])[1]['layer_originator']
 
-        # Not Boosting title will make doc 20 score higher due to tf*idf
-        params["q_text_fields"] = "{0},{1}".format("title", "layer_originator")
+        # Boosting layer_originator will make doc 20 score higher
+        params["q_text_fields"] = "{0},{1}".format("title^0.1", "layer_originator^9.0")
         response = client.get(catalog_search_api, params)
         assert 200 == response.status_code
         results = json.loads(response.content.decode('utf-8'))

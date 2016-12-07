@@ -634,7 +634,7 @@ class SearchSerializer(serializers.Serializer):
         help_text="Constrains text search to a list of fields, optionally specifying a boost. "
                   "Fields are separated by the ':' character, and boosts are a decimal following the '^' character. "
                   "Example: title^3.0:abstract^1.0:publisher:creator",
-        default="title^5.0,abstract^2.0"
+        default="title^5.0,abstract^2.0,alltext"
     )
     q_user = serializers.CharField(
         required=False,
@@ -773,6 +773,7 @@ def elasticsearch(serializer, catalog):
     must_array = []
     filter_dic = {}
     aggs_dic = {}
+    text_search_dic = {"match_all": {}}
 
     # get ES version to make the query builder to be backward compatible with
     # diffs versions.
@@ -796,18 +797,10 @@ def elasticsearch(serializer, catalog):
             }
         }
         if ES_VERSION < 2:
-            query_string = {
-                "query": {
-                    "query_string": {
-                        "fields": q_text_fields,
-                        "query": q_text,
-                        "use_dis_max": "true"
-                    }
-                }
-            }
-
-        # add string searching
-        must_array.append(query_string)
+            text_search_dic = query_string
+        else:
+            # add string searching
+            must_array.append(query_string)
 
     if q_uuid:
         # Wrapping query string into a query filter.
@@ -897,6 +890,7 @@ def elasticsearch(serializer, catalog):
         dic_query = {
             "query": {
                 "filtered": {
+                    "query": text_search_dic,
                     "filter": {
                         "bool": {
                             "must": must_array,
