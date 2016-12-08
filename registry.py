@@ -650,6 +650,13 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Registry keyword search query"
     )
+    q_text_fields = serializers.CharField(
+        required=False,
+        help_text="Constrains text search to a list of fields, optionally specifying a boost. "
+                  "Fields are separated by the ':' character, and boosts are a decimal following the '^' character. "
+                  "Example: title^3.0:abstract^1.0:publisher:creator",
+        default="title^5.0,abstract^2.0,alltext"
+    )
     q_user = serializers.CharField(
         required=False,
         help_text="Constrains docs by matching exactly a certain user."
@@ -779,6 +786,7 @@ def elasticsearch(serializer, catalog):
 
     q_text = serializer.validated_data.get("q_text")
     q_registry_text = serializer.validated_data.get("q_registry_text")
+    q_text_fields = serializer.validated_data.get("q_text_fields").split(',')
     q_time = serializer.validated_data.get("q_time")
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
@@ -794,23 +802,22 @@ def elasticsearch(serializer, catalog):
     must_array = []
     filter_dic = {}
     aggs_dic = {}
+    text_search_dic = {"match_all": {}}
 
     # String searching
     if q_text:
         query_string = {
             "query_string": {
-                "query": q_text
+                "fields": q_text_fields,
+                "query": q_text,
+                "use_dis_max": "true"
             }
         }
         if es_version < 2:
-            query_string = {
-                "query": {
-                    "query_string": {
-                        "query": q_text
-                    }
-                }
-            }
-        must_array.append(query_string)
+            text_search_dic = query_string
+        else:
+            # add string searching
+            must_array.append(query_string)
 
     if q_registry_text:
         registry_filter = {
@@ -905,6 +912,7 @@ def elasticsearch(serializer, catalog):
         dic_query = {
             "query": {
                 "filtered": {
+                    "query": text_search_dic,
                     "filter": {
                         "bool": {
                             "must": must_array,
