@@ -806,18 +806,15 @@ def elasticsearch(serializer, catalog):
 
     # String searching
     if q_text:
-        query_string = {
+        text_search_dic = {
             "query_string": {
                 "fields": q_text_fields,
                 "query": q_text,
                 "use_dis_max": "true"
             }
         }
-        if es_version < 2:
-            text_search_dic = query_string
-        else:
-            # add string searching
-            must_array.append(query_string)
+        if es_version > 2:
+            must_array.append(text_search_dic)
 
     if q_registry_text:
         registry_filter = {
