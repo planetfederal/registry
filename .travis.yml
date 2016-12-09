@@ -4,27 +4,36 @@ cache: pip
 sudo: required
 dist: xenial
 
-
 python:
   - "2.7"
   - "3.5"
 
 env:
-  - VERSION=1.7 ES_URL="https://download.elasticsearch.org/elasticsearch/elasticsearch/" ES_DEB="elasticsearch-1.7.5.deb"
-  - VERSION=5.0 ES_URL="https://artifacts.elastic.co/downloads/elasticsearch/" ES_DEB="elasticsearch-5.0.0.deb"
+  - VERSION=1.7 ES_URL="https://download.elasticsearch.org/elasticsearch/elasticsearch/" ES_DEB="elasticsearch-1.7.5.deb" REGISTRY_DATABASE_URL="postgres://localhost:5432/registry"
+  - VERSION=5.0 ES_URL="https://artifacts.elastic.co/downloads/elasticsearch/" ES_DEB="elasticsearch-5.0.0.deb" REGISTRY_DATABASE_URL="postgres://localhost:5432/registry"
 
 addons:
+  postgresql: "9.5"
   apt:
+    sources:
+      - precise-pgdg-9.5
     packages:
       - libgeos-c1
       - libxml2-dev
       - python-flake8
+      - postgresql-9.5
+      - postgresql-contrib-9.5
+
+services:
+  - postgresql
 
 before_install: 
+  - sudo apt-get install -y postgresql-9.5-postgis-2.3
   - jdk_switcher use oraclejdk8
   - curl -O $ES_URL$ES_DEB
   - sudo dpkg -i --force-confnew $ES_DEB
   - sudo service elasticsearch restart
+
 
 install:
   - pip install -r requirements.txt
@@ -32,6 +41,8 @@ install:
   - python setup.py -q install
 
 before_script:
+  - psql -c 'create database registry;' -U postgres
+  - psql -c 'CREATE EXTENSION postgis;' -U postgres -d registry
   - python registry.py pycsw -c get_sysprof
   - python registry.py pycsw -c setup_db
 
