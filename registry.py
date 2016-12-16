@@ -292,13 +292,18 @@ def include_registry_tags(record_dict, xml_file,
 
 
 def record_to_dict(record):
+    # Encodes record title if it is not empty.
+    if record.title:
+        record.title = record.title.encode('ascii', 'ignore').decode('utf-8')
+
     # Get bounding box from wkt geometry if it exists in the record.
     bbox = (-180, -90, 180, 90)
     if record.wkt_geometry:
         bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
+
     record_dict = {
-        'title': record.title.encode('ascii', 'ignore').decode('utf-8'),
+        'title': record.title,
         'abstract': record.abstract,
         'title_alternate': record.title_alternate,
         'bbox': bbox,
@@ -1491,7 +1496,8 @@ if __name__ == '__main__':  # pragma: no cover
             repo.catalog = catalog_slug
 
             # Create index with mapping in Elasticsarch.
-            create_index(catalog_slug)
+            if not check_index_exists(catalog_slug):
+                create_index(catalog_slug)
 
             # Parse each xml file and insert records.
             for xml_file in files_names:
