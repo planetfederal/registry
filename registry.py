@@ -2,6 +2,7 @@ import datetime
 import isodate
 import json
 import os
+import PIL.Image
 import rawes
 import re
 import requests
@@ -1318,15 +1319,7 @@ def layer_xml_view(request, layer_uuid):
     return response
 
 
-def layer_png_view(request, layer_uuid):
-    layer = layer_from_csw(layer_uuid)
-    if not layer:
-        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
-
-    # Set up a mapproxy app for this particular layer
-    mp, yaml_config = get_mapproxy(layer)
-    yaml_text = yaml.load(yaml_config)
-
+def get_mapproxy_png(yaml_text, mp):
     captured = []
     output = []
     bbox_req, lay_name = get_path_info_params(yaml_text)
@@ -1341,11 +1334,28 @@ def layer_png_view(request, layer_uuid):
 
     # Get a response from MapProxyAppy as if it was running standalone.
     environ = environ_from_url(path_info)
-    app_iter = mp(environ, start_response)
+    app_iter = None
 
-    response = HttpResponse(next(app_iter), content_type='image/png')
+    try:
+        app_iter = mp(environ, start_response)
+    except:
+        pass
+    
+    return app_iter
 
-    return response
+
+def layer_png_view(request, layer_uuid):
+    layer = layer_from_csw(layer_uuid)
+    if not layer:
+        return HttpResponse("Layer with uuid {0} not found.".format(layer_uuid), status=404)
+
+    # Set up a mapproxy app for this particular layer
+    mp, yaml_config = get_mapproxy(layer)
+    yaml_text = yaml.load(yaml_config)
+
+    app_iter = get_mapproxy_png(yaml_text, mp)
+
+    return HttpResponse(next(app_iter), content_type='image/png')
 
 
 def layer_mapproxy(request, layer_uuid, path_info):
@@ -1428,6 +1438,150 @@ def load_records(repo, parsed_xml, context):
     [repo.insert(r, 'local', r.insert_date) for r in parsed_records]
 
 
+def check_config(layer_uuid, yaml_config, folder):
+    yml_file = os.path.join(folder, '%s.yml' % layer_uuid)
+    if os.path.exists(yml_file):
+        return 0
+    if 'h1 { font-weight:normal; }' in yaml_config:
+        return 1
+    if not os.path.isdir(folder):
+        os.mkdir(folder)
+    with open(yml_file, 'wb') as out_file:
+        out_file.write(yaml_config.encode())
+
+    return 0
+
+
+def check_bbox(yml_config):
+    if not 'services' in yml_config:
+        return 1
+    service = yml_config['services']
+
+    if not 'wms' in service:
+        return 1
+
+    wms = service['wms']
+
+    if not 'bbox' in wms:
+        return 1
+
+    bbox_string = wms['bbox']
+    
+    coords = bbox_string.split(',')
+
+    if len(coords) != 4:
+        return 1
+
+    bbox = [float(coord) for coord in coords]
+
+    if bbox[0] < -180:
+        return 1
+    if bbox[1] < -90:
+        return 1
+    if bbox[2] > 180:
+        return 1
+    if bbox[3] > 90:
+        return 1
+
+    return 0
+
+
+def layer_image(uuid, folder):
+    if not os.path.isdir(folder):
+        os.mkdir(folder)
+    png_file = os.path.join(folder, '%s.png' % uuid)
+    if os.path.exists(png_file):
+        return 0
+
+    layer = layer_from_csw(uuid)
+    mp, yaml_config = get_mapproxy(layer)
+    yaml_text = yaml.load(yaml_config)
+
+    app_iter = get_mapproxy_png(yaml_text, mp)
+
+    if app_iter is None:
+        return 1
+
+    try:
+        with open(png_file, 'wb') as img:
+            img.write(next(app_iter))
+    except:
+        return 1
+
+    content = 'error'
+
+    with open(png_file, 'rb') as img:
+        content = img.read()
+
+    if b'error' in content:
+        os.remove(img_file)
+        return 1
+
+    return 0
+
+
+def check_image(uuid,folder):
+    img=PIL.Image.open(os.path.join(folder, '%s.png' % uuid))
+    hist=img.histogram()
+    #if it is white
+    if hist[0]==sum(hist):
+        return 1
+    #if it is black
+    if hist[255]==sum(hist):
+        return 1
+    return 0
+
+
+def check_layer(uuid, yaml_config, yml_folder='yml', xml_folder='xml', png_folder='png'):
+    valid_config, valid_bbox = check_config(uuid, yaml_config, yml_folder), 1
+    if valid_config != 1:
+        yml_file = os.path.join(yml_folder, '%s.yml' % uuid)
+        with open(yml_file, 'rb') as f:
+            yml_config = yaml.load(f)
+        valid_bbox, valid_image = check_bbox(yml_config), 1
+
+    if valid_bbox != 1:
+        valid_image, check_color = layer_image(uuid, png_folder), 1
+
+    if valid_image !=1:
+        check_color = check_image(uuid,png_folder)
+
+    return valid_bbox, valid_config, valid_image , check_color
+
+
+def parse_values_from_string(line):
+    uuid, valid_bbox, valid_config, valid_image, check_color, date, time = line.split(' ')
+    check_date = '{0}T{1}+00:00'.format(date, time)
+
+    reliability_dic = {
+        'valid_bbox' : valid_bbox,
+        'valid_config' : valid_config,
+        'valid_image' : valid_image,
+        'check_color' : check_color,
+        'check_date' : check_date
+
+    }
+
+    return uuid, reliability_dic
+
+
+def get_data_from_es(es, uuid):
+    query_dic = {
+        "query": {
+            "query_string": {
+                "fields": ["layer_identifier"],
+                "query": uuid
+            }
+        }
+    }
+    es_layer = es.post('_search', data=query_dic)
+    layer_dic = es_layer['hits']['hits'][0]['_source']
+    layer_id = es_layer['hits']['hits'][0]['_id']
+    index_name = es_layer['hits']['hits'][0]['_index']
+
+    return layer_dic, layer_id, index_name
+
+
 urlpatterns = [
     url(r'^$', readme_view),
     url(r'^csw$', csw_view),
@@ -1447,6 +1601,29 @@ if __name__ == '__main__':  # pragma: no cover
     COMMAND = None
     os.environ['DJANGO_SETTINGS_MODULE'] = 'registry'
 
+    if 'reliability' in sys.argv[:2]:
+        es, _ = es_connect(url=REGISTRY_SEARCH_URL)
+        for line in sys.stdin:
+            uuid, reliability_dic = parse_values_from_string(line)
+            layer_dic, layer_id, index_name = get_data_from_es(es, uuid)
+            layer_dic['reliability'] = reliability_dic
+
+            es.put('{0}/layer/{1}'.format(index_name, layer_id), data=layer_dic)
+            sys.stdout.write('Layer {0} updated\n'.format(uuid))
+
+        sys.exit(0)
+
+    if 'check_layers' in sys.argv[:2]:
+        for line in sys.stdin:
+            uuid = line.rstrip()
+            layer = layer_from_csw(uuid)
+            _, yaml_config = get_mapproxy(layer)
+            valid_bbox, valid_config, valid_image, check_color = check_layer(uuid, yaml_config)
+            output = '%s %s %s %s %s %s\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, datetime.datetime.now())
+            sys.stdout.write(output)
+
+        sys.exit(0)
+
     if 'pycsw' in sys.argv[:2]:
 
         OPTS, ARGS = getopt.getopt(sys.argv[2:], 'c:f:ho:p:ru:x:s:t:y')
@@ -1464,7 +1641,10 @@ if __name__ == '__main__':  # pragma: no cover
         table = PYCSW['repository']['table']
         home = PYCSW['server']['home']
 
-        available_commands = ['setup_db', 'get_sysprof', 'load_records']
+        available_commands = ['setup_db',
+                              'get_sysprof',
+                              'load_records',
+                              'list_layers']
 
         if COMMAND not in available_commands:
             print('pycsw supports only the following commands: %s' % available_commands)
@@ -1475,6 +1655,16 @@ if __name__ == '__main__':  # pragma: no cover
 
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())
+
+        elif COMMAND == 'list_layers':
+            context = config.StaticContext()
+            repo = RegistryRepository(PYCSW['repository']['database'],
+                                      context,
+                                      table=PYCSW['repository']['table'])
+            len_layers = int(repo.query('')[0])
+            layers_list = repo.query('', maxrecords=len_layers)[1]
+            for layer in layers_list:
+                print(layer.identifier)
 
         elif COMMAND == 'load_records':
             if os.path.isfile(xml_dirpath):

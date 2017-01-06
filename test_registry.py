@@ -1,9 +1,12 @@
 import json
+import os
 import pytest
 import random
 import rawes
 import registry
 import requests
+import shutil
+import yaml
 from datetime import datetime
 from django.test import RequestFactory
 from pycsw.core import config
@@ -245,6 +248,11 @@ def test_create_transaction(client):
     search_response = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == search_response['a.matchDocs']
     assert response.get('Content-Type') == 'application/json'
+
+    layer_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
+    layer_dic, layer_id, index_name = registry.get_data_from_es(es_client, layer_uuid)
+    assert 'layer_1 titleterm1' == layer_dic['title']
+    assert 'test' == index_name
 
 
 def test_parse_params(client):
@@ -735,6 +743,12 @@ def test_utilities(client):
     assert value.bounds[2] == 90
     assert value.bounds[3] == 180
 
+    line = 'fb76f1d7-55bc-4c19-9182-0dbeef4208e6 0 0 0 0 2017-01-05 09:04:20.013764'
+    uuid, reliability_dic = registry.parse_values_from_string(line)
+    assert '0' == reliability_dic['valid_bbox']
+    assert '0' == reliability_dic['valid_image']
+    assert '0' == reliability_dic['valid_config']
+
     wrong_url = 'http://localhost:9500'
     with pytest.raises(requests.exceptions.ConnectionError) as excinfo:
         response = registry.es_connect(wrong_url)
@@ -745,6 +759,77 @@ def test_bad_mapproxy_config(client):
     with pytest.raises(registry.ConfigurationError) as excinfo:
         registry.configure_mapproxy({}, ignore_warnings=False)
     assert 'invalid configuration' in str(excinfo.value)
+
+
+def test_check_layers():
+    layer_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
+    layer = registry.layer_from_csw(layer_uuid)
+    _, yaml_config = registry.get_mapproxy(layer)
+    valid_bbox, valid_config, valid_image, check_color = registry.check_layer(layer_uuid, yaml_config)
+    assert 0 == valid_bbox
+    assert 0 == valid_config
+    assert 0 == valid_image
+    assert 0 == check_color
+
+    # Verify that recently created file exist in yml file.
+    layer = registry.layer_from_csw(layer_uuid)
+    _, yaml_config = registry.get_mapproxy(layer)
+    valid_config = registry.check_config(layer_uuid, yaml_config, 'yml')
+    assert 0 == valid_config
+
+    valid_image = registry.layer_image(layer_uuid, 'png')
+    assert 0 == valid_image
+
+    yaml_text = yaml.load(yaml_config)
+    # Remove dictionary keys from yaml file.
+    services = yaml_text.pop('services', None)
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+    yaml_text['services'] = services
+
+    # Removing wms value.
+    wms = yaml_text['services'].pop('wms', None)
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+    yaml_text['services']['wms'] = wms
+
+    # Removing bounding box value.
+    bbox = yaml_text['services']['wms'].pop('bbox', None)
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Incomplete number of coordinates.
+    yaml_text['services']['wms']['bbox'] = '-40.0000,-40.0000,-20.0000'
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Upper left less than -180 in x.
+    yaml_text['services']['wms']['bbox'] = '-191.0000,-40.0000,-20.0000,-20.0000'
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Upper left less than -90 in y.
+    yaml_text['services']['wms']['bbox'] = '-40.0000,-100.0000,-20.0000,-20.0000'
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Lower right higher than 180 in x.
+    yaml_text['services']['wms']['bbox'] = '-40.0000,-40.0000,500.0000,-20.0000'
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Lower right higher than 90 in y.
+    yaml_text['services']['wms']['bbox'] = '-40.0000,-40.0000,-20.0000,500.0000'
+    valid_bbox = registry.check_bbox(yaml_text)
+    assert 1 == valid_bbox
+
+    # Create wrong yml configuration file.
+    wrong_yml = 'h1 { font-weight:normal; }'
+    valid_config = registry.check_config('wrong_uuid', wrong_yml, 'yml')
+    assert 1 == valid_config
+
+    shutil.rmtree('png')
+    shutil.rmtree('yml')
 
 
 def test_clear_records(client):

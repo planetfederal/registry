@@ -127,7 +127,7 @@ Usage
 	curl -XGET http://localhost:8000/layer/<layer_uuid>.png
 	```
 
-0. Delete catalog.
+9. Delete catalog.
 
 	```sh
 	curl -XDELETE http://localhost:8000/catalog/<catalog_slug>/csw
@@ -138,6 +138,24 @@ to the number of layers returned by the search api.
 
 **Note.** In registry, is possible to read all catalogs and layers. However, the catalog slug is necessary in order to add layers.
 
+
+Reliability
+===========
+
+1. List layers uuid and save in a text file.
+	```sh
+	python registry.py pycsw -c list_layers > uuids.txt
+	```
+
+2. Execute checking function for each layer uuid.
+	```sh
+	cat uuids.txt | python registry.py check_layers > checked_uuids.txt
+	```
+
+3. Update Elasticsearch including reliability.
+	```sh
+	cat checked_uuids.txt | python registry.py reliability
+	```
 
 Testing
 =======
