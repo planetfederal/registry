@@ -769,7 +769,7 @@ def test_check_layers():
     assert 0 == valid_bbox
     assert 0 == valid_config
     assert 0 == valid_image
-    assert 0 == check_color
+    assert 1 == check_color
 
     # Verify that recently created file exist in yml file.
     layer = registry.layer_from_csw(layer_uuid)

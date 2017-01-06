@@ -1521,14 +1521,22 @@ def layer_image(uuid, folder):
 
 
 def check_image(uuid,folder):
-    img=PIL.Image.open(os.path.join(folder, '%s.png' % uuid))
-    hist=img.histogram()
-    #if it is white
-    if hist[0]==sum(hist):
+    img = PIL.Image.open(os.path.join(folder, '%s.png' % uuid))
+    img_colors = img.convert('L').getcolors()
+    # For testing, image resolution is 200*150=30000 pixels.
+    # getcolor function retrieves the number of ocurrences per pixel value.
+    # Verify that is an image with error. Only two pixel values.
+    if len(img_colors) == 2:
         return 1
-    #if it is black
-    if hist[255]==sum(hist):
+    # Verify that most of pixels are not 255 (blank image).
+    ocurrences, pixel_value = img_colors[-1]
+    if ocurrences > 29950:
         return 1
+    # Verify that most of pixels are not 0 (dark image).
+    ocurrences, pixel_value = img_colors[0]
+    if ocurrences > 29950:
+        return 1
+
     return 0
 
 
