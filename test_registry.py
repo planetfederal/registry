@@ -743,7 +743,7 @@ def test_utilities(client):
     assert value.bounds[2] == 90
     assert value.bounds[3] == 180
 
-    line = 'fb76f1d7-55bc-4c19-9182-0dbeef4208e6 0 0 0 0 2017-01-05 09:04:20.013764'
+    line = 'fb76f1d7-55bc-4c19-9182-0dbeef4208e6 0 0 0 0 1483721501'
     uuid, reliability_dic = registry.parse_values_from_string(line)
     assert '0' == reliability_dic['valid_bbox']
     assert '0' == reliability_dic['valid_image']
