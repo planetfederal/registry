@@ -4,6 +4,11 @@ Registry
 [![Build Status](https://travis-ci.org/boundlessgeo/registry.svg?branch=master)](https://travis-ci.org/boundlessgeo/registry)
 [![Coverage Status](https://coveralls.io/repos/github/boundlessgeo/registry/badge.svg?branch=master)](https://coveralls.io/github/boundlessgeo/registry?branch=master)
 
+
+[![Build Status](http://ci.boundlessps.com/buildStatus/icon?job=commit-build-registry-centos6)](http://ci.boundlessps.com/job/commit-build-registry-centos6) (Enterprise Linux 6 RPM)
+
+[![Build Status](http://ci.boundlessps.com/buildStatus/icon?job=commit-build-registry-centos7)](http://ci.boundlessps.com/job/commit-build-registry-centos7) (Enterprise Linux 7 RPM)
+
 Registry is a web-based platform that captures geo-spatial content using CSW-T
 protocol. Information is indexed into the Elasticsearch engine allowing fast
 searches.
