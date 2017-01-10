@@ -47,6 +47,7 @@ LOGGER = logging.getLogger(__name__)
 
 __version__ = 0.1
 
+ALLOWED_HOSTS = [os.getenv('REGISTRY_ALLOWED_HOSTS', '*')]
 DEBUG = strtobool(os.getenv('REGISTRY_DEBUG', 'True'))
 ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
@@ -1340,7 +1341,7 @@ def get_mapproxy_png(yaml_text, mp):
         app_iter = mp(environ, start_response)
     except:
         pass
-    
+
     return app_iter
 
 
@@ -1466,7 +1467,7 @@ def check_bbox(yml_config):
         return 1
 
     bbox_string = wms['bbox']
-    
+
     coords = bbox_string.split(',')
 
     if len(coords) != 4:
