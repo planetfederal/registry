@@ -777,8 +777,9 @@ def test_check_layers():
     valid_config = registry.check_config(layer_uuid, yaml_config, 'yml')
     assert 0 == valid_config
 
-    valid_image = registry.layer_image(layer_uuid, 'png')
+    valid_image, check_color = registry.layer_image(layer_uuid)
     assert 0 == valid_image
+    assert 1 == check_color
 
     yaml_text = yaml.load(yaml_config)
     # Remove dictionary keys from yaml file.
@@ -828,7 +829,6 @@ def test_check_layers():
     valid_config = registry.check_config('wrong_uuid', wrong_yml, 'yml')
     assert 1 == valid_config
 
-    shutil.rmtree('png')
     shutil.rmtree('yml')
 
 

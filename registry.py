@@ -24,6 +24,8 @@ from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
+from io import BytesIO
+
 from pycsw import server
 from pycsw.core import config, metadata
 from pycsw.core import admin as pycsw_admin
@@ -1242,7 +1244,7 @@ def environ_from_url(path):
         'SERVER_PROTOCOL': 'HTTP/1.0',
         'wsgi.version': (1, 0),
         'wsgi.url_scheme': scheme,
-        'wsgi.input': io.BytesIO(),
+        'wsgi.input': BytesIO(),
         'wsgi.errors': sys.stderr,
         'wsgi.multithread': False,
         'wsgi.multiprocess': False,
@@ -1487,13 +1489,8 @@ def check_bbox(yml_config):
     return 0
 
 
-def layer_image(uuid, folder):
-    if not os.path.isdir(folder):
-        os.mkdir(folder)
-    png_file = os.path.join(folder, '%s.png' % uuid)
-    if os.path.exists(png_file):
-        return 0
-
+def layer_image(uuid):
+    valid_image, check_color = 0, 0
     layer = layer_from_csw(uuid)
     mp, yaml_config = get_mapproxy(layer)
     yaml_text = yaml.load(yaml_config)
@@ -1501,28 +1498,18 @@ def layer_image(uuid, folder):
     app_iter = get_mapproxy_png(yaml_text, mp)
 
     if app_iter is None:
-        return 1
+        valid_image, check_color = 1, 1
+        return valid_image, check_color
 
-    try:
-        with open(png_file, 'wb') as img:
-            img.write(next(app_iter))
-    except:
-        return 1
+    bytes_img = BytesIO(next(app_iter))
+    img = PIL.Image.open(bytes_img)
 
-    content = 'error'
+    check_color = check_image(img)
 
-    with open(png_file, 'rb') as img:
-        content = img.read()
-
-    if b'error' in content:
-        os.remove(img_file)
-        return 1
-
-    return 0
+    return valid_image, check_color
 
 
-def check_image(uuid,folder):
-    img = PIL.Image.open(os.path.join(folder, '%s.png' % uuid))
+def check_image(img):
     img_colors = img.convert('L').getcolors()
     # For testing, image resolution is 200*150=30000 pixels.
     # getcolor function retrieves the number of ocurrences per pixel value.
@@ -1541,7 +1528,7 @@ def check_image(uuid,folder):
     return 0
 
 
-def check_layer(uuid, yaml_config, yml_folder='yml', xml_folder='xml', png_folder='png'):
+def check_layer(uuid, yaml_config, yml_folder='yml'):
     valid_config, valid_bbox = check_config(uuid, yaml_config, yml_folder), 1
     if valid_config != 1:
         yml_file = os.path.join(yml_folder, '%s.yml' % uuid)
@@ -1550,10 +1537,7 @@ def check_layer(uuid, yaml_config, yml_folder='yml', xml_folder='xml', png_folde
         valid_bbox, valid_image = check_bbox(yml_config), 1
 
     if valid_bbox != 1:
-        valid_image, check_color = layer_image(uuid, png_folder), 1
-
-    if valid_image !=1:
-        check_color = check_image(uuid,png_folder)
+        valid_image, check_color = layer_image(uuid)
 
     return valid_bbox, valid_config, valid_image , check_color
 
