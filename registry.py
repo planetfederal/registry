@@ -1447,6 +1447,11 @@ def check_config(layer_uuid, yaml_config, folder):
         return 0
     if 'h1 { font-weight:normal; }' in yaml_config:
         return 1
+
+    config_dict = yaml.load(yaml_config)
+    if config_dict['sources']['default_source']['req']['url'] is None:
+        return 1
+
     if not os.path.isdir(folder):
         os.mkdir(folder)
     with open(yml_file, 'wb') as out_file:

@@ -772,16 +772,22 @@ def test_check_layers():
     assert 1 == check_color
 
     # Verify that recently created file exist in yml file.
-    layer = registry.layer_from_csw(layer_uuid)
-    _, yaml_config = registry.get_mapproxy(layer)
     valid_config = registry.check_config(layer_uuid, yaml_config, 'yml')
     assert 0 == valid_config
+
+    shutil.rmtree('yml')
 
     valid_image, check_color = registry.layer_image(layer_uuid)
     assert 0 == valid_image
     assert 1 == check_color
 
     yaml_text = yaml.load(yaml_config)
+
+    # Test url with None.
+    yaml_text['sources']['default_source']['req']['url'] = None
+    valid_config = registry.check_config(layer_uuid, yaml.dump(yaml_text, default_flow_style=False), 'yml')
+    assert 1 == valid_config
+
     # Remove dictionary keys from yaml file.
     services = yaml_text.pop('services', None)
     valid_bbox = registry.check_bbox(yaml_text)
@@ -828,8 +834,6 @@ def test_check_layers():
     wrong_yml = 'h1 { font-weight:normal; }'
     valid_config = registry.check_config('wrong_uuid', wrong_yml, 'yml')
     assert 1 == valid_config
-
-    shutil.rmtree('yml')
 
 
 def test_clear_records(client):
