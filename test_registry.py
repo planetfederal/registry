@@ -754,6 +754,42 @@ def test_utilities(client):
         response = registry.es_connect(wrong_url)
     assert 'Failed to establish a new connection' in str(excinfo.value)
 
+    check_list = [
+        {
+            'check_color': '1',
+            'timestamp': '2017-01-11 14:30:45',
+            'valid_bbox': '0',
+            'valid_config': '0',
+            'valid_image': '0'
+        },
+        {
+            'check_color': '1',
+            'timestamp': '2017-01-11 14:30:56',
+            'valid_bbox': '0',
+            'valid_config': '0',
+            'valid_image': '0'
+        },
+        {
+            'check_color': '0',
+            'timestamp': '2017-01-11 14:32:26',
+            'valid_bbox': '0',
+            'valid_config': '0',
+            'valid_image': '0'
+        }
+    ]
+    new_dict = {
+        'check_color': '0',
+        'timestamp': '2017-01-11 14:32:26',
+        'valid_bbox': '0',
+        'valid_config': '0',
+        'valid_image': '0'
+    }
+    assert 3 == len(check_list)
+    new_list = registry.add_dict_to_list(check_list, new_dict)
+    assert 4 == len(new_list)
+    reliability_rate = registry.compute_reliability(new_list)
+    assert 50.0 == reliability_rate
+
 
 def test_bad_mapproxy_config(client):
     with pytest.raises(registry.ConfigurationError) as excinfo:
