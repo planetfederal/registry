@@ -7,6 +7,7 @@ import rawes
 import re
 import requests
 import sys
+import time
 import getopt
 import yaml
 import io
@@ -1548,15 +1549,14 @@ def check_layer(uuid, yaml_config, yml_folder='yml'):
 
 
 def parse_values_from_string(line):
-    uuid, valid_bbox, valid_config, valid_image, check_color, date, time = line.split(' ')
-    check_date = '{0}T{1}+00:00'.format(date, time)
+    uuid, valid_bbox, valid_config, valid_image, check_color, unix_timestamp = line.split(' ')
 
     reliability_dic = {
         'valid_bbox' : valid_bbox,
         'valid_config' : valid_config,
         'valid_image' : valid_image,
         'check_color' : check_color,
-        'check_date' : check_date
+        'unix_timestamp' : unix_timestamp
 
     }
 
@@ -1617,7 +1617,7 @@ if __name__ == '__main__':  # pragma: no cover
             layer = layer_from_csw(uuid)
             _, yaml_config = get_mapproxy(layer)
             valid_bbox, valid_config, valid_image, check_color = check_layer(uuid, yaml_config)
-            output = '%s %s %s %s %s %s\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, datetime.datetime.now())
+            output = '%s %s %s %s %s %d\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, int(time.time()))
             sys.stdout.write(output)
 
         sys.exit(0)
