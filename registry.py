@@ -1,3 +1,4 @@
+import collections
 import datetime
 import isodate
 import json
@@ -311,6 +312,7 @@ def record_to_dict(record):
         'title': record.title,
         'abstract': record.abstract,
         'title_alternate': record.title_alternate,
+        'checks_list': [],
         'bbox': bbox,
         'min_x': min_x,
         'min_y': min_y,
@@ -1551,13 +1553,15 @@ def check_layer(uuid, yaml_config, yml_folder='yml'):
 def parse_values_from_string(line):
     uuid, valid_bbox, valid_config, valid_image, check_color, unix_timestamp = line.split(' ')
 
+    # Transform unix timestamp to readable date.
+    timestamp = "{0}".format(datetime.datetime.fromtimestamp(int(unix_timestamp)))
+
     reliability_dic = {
         'valid_bbox' : valid_bbox,
         'valid_config' : valid_config,
         'valid_image' : valid_image,
         'check_color' : check_color,
-        'unix_timestamp' : unix_timestamp
-
+        'timestamp': timestamp
     }
 
     return uuid, reliability_dic
@@ -1579,6 +1583,21 @@ def get_data_from_es(es, uuid):
 
     return layer_dic, layer_id, index_name
 
+
+def add_dict_to_list(list_dictionaries, new_dict):
+    ring_buffer = collections.deque(list_dictionaries, maxlen=10)
+    ring_buffer.append(new_dict)
+
+    return list(ring_buffer)
+
+
+def compute_reliability(list_dictionaries):
+    reliability = 0
+    for check in list_dictionaries:
+        if list(check.values()).count('1') == 0:
+            reliability += 1
+
+    return (float(reliability) / len(list_dictionaries)) * 100
 
 urlpatterns = [
     url(r'^$', readme_view),
@@ -1604,10 +1623,11 @@ if __name__ == '__main__':  # pragma: no cover
         for line in sys.stdin:
             uuid, reliability_dic = parse_values_from_string(line)
             layer_dic, layer_id, index_name = get_data_from_es(es, uuid)
-            layer_dic['reliability'] = reliability_dic
+            layer_dic['checks_list'] = add_dict_to_list(layer_dic['checks_list'], reliability_dic)
+            layer_dic['reliability_rate'] = compute_reliability(layer_dic['checks_list'])
 
             es.put('{0}/layer/{1}'.format(index_name, layer_id), data=layer_dic)
-            sys.stdout.write('Layer {0} updated\n'.format(uuid))
+            sys.stdout.write('Layer {0} updated with reliablity {1}%\n'.format(uuid, layer_dic['reliability_rate']))
 
         sys.exit(0)
 
