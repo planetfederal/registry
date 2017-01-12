@@ -7,7 +7,7 @@ pycsw==2.1.dev20161019
 SQLAlchemy==1.1.2
 
 # django
-django==1.10.2
+django==1.9
 
 # registry
 rawes==0.5.5
