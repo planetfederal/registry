@@ -139,6 +139,27 @@ to the number of layers returned by the search api.
 **Note.** In registry, is possible to read all catalogs and layers. However, the catalog slug is necessary in order to add layers.
 
 
+Swagger UI
+==========
+
+For development and testing of search api using a standalone swagger-ui server, please do the following.
+
+1. Open Google Chrome without web-security.
+
+	```sh
+	open -a Google\ Chrome --args --disable-web-security --user-data-dir
+	```
+
+2. Download and create a swagger instance specifying a different port.
+	```sh
+	git clone git@github.com:swagger-api/swagger-ui.git
+	python -m SimpleHTTPServer 8001
+	```
+
+3. Paste in the api selector, the endpoint for the registry swagger yml configuration file ```http://localhost:8000/api/config```
+
+
+
 Reliability
 ===========
 

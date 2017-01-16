@@ -1599,10 +1599,19 @@ def compute_reliability(list_dictionaries):
 
     return (float(reliability) / len(list_dictionaries)) * 100
 
+
+def api_config_view(request):
+    with open('search_api.yaml', 'r') as f:
+        response = HttpResponse(f, content_type='text/plain')
+
+    return response
+
+
 urlpatterns = [
     url(r'^$', readme_view),
     url(r'^csw$', csw_view),
     url(r'^api$', search_view),
+    url(r'^api/config$', api_config_view),
     url(r'^catalog$', list_catalogs_view),
     url(r'^catalog/(?P<catalog>\w+)/csw$', csw_view),
     url(r'^catalog/(?P<catalog>\w+)/api/$', search_view),

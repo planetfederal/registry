@@ -273,6 +273,11 @@ def test_parse_params(client):
 
 
 def test_search_api(client):
+    # Test configuration file for swagger api client.
+    response = client.get('/api/config')
+    assert 200 == response.status_code
+    assert 'text/plain' in response.serialize_headers().decode('utf-8')
+
     response = client.get(catalog_search_api, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
