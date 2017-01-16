@@ -92,7 +92,7 @@ Usage
 
 	- From command line.
 	```sh
-	python registry.py pycsw -c load_records -p /records/files/path/ -g <catalog_slug>
+	python registry.py pycsw -c load_records -p /records/files/path/ -s <catalog_slug>
 	```
 
 5. Search api endpoint.
