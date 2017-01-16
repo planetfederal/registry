@@ -806,7 +806,7 @@ def test_check_layers():
     layer_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
     layer = registry.layer_from_csw(layer_uuid)
     _, yaml_config = registry.get_mapproxy(layer)
-    valid_bbox, valid_config, valid_image, check_color = registry.check_layer(layer_uuid, yaml_config)
+    valid_bbox, valid_config, valid_image, check_color = registry.check_layer(layer_uuid)
     assert 0 == valid_bbox
     assert 0 == valid_config
     assert 0 == valid_image

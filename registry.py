@@ -47,6 +47,8 @@ from six.moves.urllib_parse import urlparse, unquote as url_unquote
 
 from rawes.elastic_exception import ElasticException
 
+netlocs_dic = {}
+
 LOGGER = logging.getLogger(__name__)
 
 __version__ = 0.1
@@ -60,6 +62,7 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
+REGISTRY_MAXRECORDS_PER_NETLOC = int(os.getenv('REGISTRY_MAXRECORDS_PER_NETLOC', '3600'))
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
@@ -1454,7 +1457,6 @@ def check_config(layer_uuid, yaml_config, folder):
     config_dict = yaml.load(yaml_config)
     if config_dict['sources']['default_source']['req']['url'] is None:
         return 1
-
     if not os.path.isdir(folder):
         os.mkdir(folder)
     with open(yml_file, 'wb') as out_file:
@@ -1536,18 +1538,38 @@ def check_image(img):
     return 0
 
 
-def check_layer(uuid, yaml_config, yml_folder='yml'):
-    valid_config, valid_bbox = check_config(uuid, yaml_config, yml_folder), 1
+def check_layer(uuid, yml_folder='yml'):
+    layer = layer_from_csw(uuid)
+    _, yaml_config = get_mapproxy(layer)
+    valid_config, valid_bbox, check_color = check_config(uuid, yaml_config, yml_folder), 1, 1
+    netloc_counter = 9999
+
     if valid_config != 1:
+        netloc = check_netloc(layer)
+        netloc_counter = netlocs_dic[netloc]['counter']
         yml_file = os.path.join(yml_folder, '%s.yml' % uuid)
+
         with open(yml_file, 'rb') as f:
             yml_config = yaml.load(f)
+
         valid_bbox, valid_image = check_bbox(yml_config), 1
 
-    if valid_bbox != 1:
+    if valid_bbox != 1 and netloc_counter <= REGISTRY_MAXRECORDS_PER_NETLOC:
         valid_image, check_color = layer_image(uuid)
 
     return valid_bbox, valid_config, valid_image , check_color
+
+
+def check_netloc(layer):
+    netloc = urlparse(layer.source).netloc
+    if netloc in netlocs_dic.keys():
+        netlocs_dic[netloc]['counter'] += 1
+    else:
+        netlocs_dic[netloc] = {
+            'counter': 1
+        }
+
+    return netloc
 
 
 def parse_values_from_string(line):
@@ -1641,6 +1663,7 @@ if __name__ == '__main__':  # pragma: no cover
         sys.exit(0)
 
     if 'check_layers' in sys.argv[:2]:
+        netlocs_dic = {}
         for line in sys.stdin:
             uuid = line.rstrip()
             layer = layer_from_csw(uuid)
@@ -1648,7 +1671,6 @@ if __name__ == '__main__':  # pragma: no cover
             valid_bbox, valid_config, valid_image, check_color = check_layer(uuid, yaml_config)
             output = '%s %s %s %s %s %d\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, int(time.time()))
             sys.stdout.write(output)
-
         sys.exit(0)
 
     if 'pycsw' in sys.argv[:2]:
