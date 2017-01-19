@@ -57,6 +57,7 @@ DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
 
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
+REGISTRY_MAPPING_DIST_ERR_PCT = os.getenv('REGISTRY_MAPPING_DIST_ERR_PCT', 0.025)
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
@@ -377,7 +378,8 @@ def es_mapping(version):
                     "layer_geoshape": {
                         "type": "geo_shape",
                         "tree": "quadtree",
-                        "precision": REGISTRY_MAPPING_PRECISION
+                        "precision": REGISTRY_MAPPING_PRECISION,
+                        "distance_error_pct": REGISTRY_MAPPING_DIST_ERR_PCT
                     },
                     "layer_identifier": {"type": "string", "index": "not_analyzed"},
                     "title": text_field(version, copy_to="alltext"),
