@@ -118,6 +118,7 @@ def get_xml_block(dictionary):
         'discomap.eea.europa.eu/arcgis/rest/services/Noise/2007_NOISE_END_'
         'LAEA_Contours/MapServer/?f=json</dct:references>\n'
         '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
+        '<registry:property name="category" value="Intelligence"/>\n'
         '    <dct:references scheme="WWW:LINK">http://localhost:8000/layer'
         '/%s/</dct:references>\n'
         '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
@@ -344,6 +345,14 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
+
+    params = default_params.copy()
+    params['a_categories_limit'] = 10
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 'Intelligence' == results['a.categories'][0]['key']
+    assert len(layers_list) == results['a.categories'][0]['doc_count']
 
 
 def test_q_text_keywords(client):

@@ -379,7 +379,12 @@ def es_mapping(version):
         "mappings": {
             "layer": {
                 "properties": {
-                    "registry": {"type": "nested"},
+                    "registry": {
+                        "type": "nested",
+                        "properties": {
+                            "category": {"type": "string", "index": "not_analyzed"}
+                        }
+                    },
                     "layer_geoshape": {
                         "type": "geo_shape",
                         "tree": "quadtree",
@@ -708,6 +713,11 @@ class SearchSerializer(serializers.Serializer):
         help_text="The consecutive time interval/gap for each time range. Ignores a.time.limit.The format is based on "
                   "a subset of the ISO-8601 duration format."
     )
+    a_categories_limit = serializers.IntegerField(
+        required=False,
+        help_text="Listing the registry categories and their corresponding number of documents indexed. "
+                  "The integer value Limits the received number of categories.",
+    )    
     a_hm_limit = serializers.IntegerField(
         required=False,
         help_text=("Non-0 triggers heatmap/grid faceting. "
@@ -813,6 +823,7 @@ def elasticsearch(serializer, catalog):
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
     a_time_gap = serializer.validated_data.get("a_time_gap")
     a_time_limit = serializer.validated_data.get("a_time_limit")
+    a_categories_limit = serializer.validated_data.get("a_categories_limit")
     original_response = serializer.validated_data.get("original_response")
 
     # Dict for search on Elastic engine
@@ -972,10 +983,23 @@ def elasticsearch(serializer, catalog):
         }
         aggs_dic['articles_over_time'] = time_gap
 
+    if a_categories_limit:
+        aggs_dic['registry_categories'] = {
+            "nested": {
+                "path": "registry"
+            },
+            "aggs": {
+                "registry": {
+                    "terms": {
+                        "field": "registry.category",
+                        "size": a_categories_limit
+                    }
+                }
+            }
+        }
     # adding aggreations on body query
     if aggs_dic:
         dic_query['aggs'] = aggs_dic
-
     try:
         es_response = es.post(search_engine_endpoint, data=dic_query)
     except ElasticException as e:
@@ -1016,6 +1040,8 @@ def elasticsearch(serializer, catalog):
                     gap_count.append(temp)
             a_gap['counts'] = gap_count
             data['a.time'] = a_gap
+        if 'registry_categories' in aggs:
+            data['a.categories'] = aggs['registry_categories']['registry']['buckets']
 
     if not int(d_docs_limit) == 0:
         for item in es_response['hits']['hits']:

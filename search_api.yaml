@@ -113,6 +113,12 @@ paths:
           maximum: 10000
           minimum: 0
         -
+          name: a.categories.limit
+          description: "Listing the registry categories and their corresponding number of documents indexed. The integer value limits the received number of categories."
+          in: query
+          required: false
+          type: integer
+        -
           name: a.hm.gridlevel
           description: "To explicitly specify the grid level, e.g. to let a user ask for greater or courser resolution than the most recent request.  Ignores a.hm.limit."
           in: query
