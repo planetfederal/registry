@@ -347,12 +347,12 @@ def test_search_api(client):
     assert 2 == results['a.matchDocs']
 
     params = default_params.copy()
-    params['a_categories'] = 1
+    params['a_categories_limit'] = 10
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 'Intelligence' == results['categories'][0]['key']
-    assert len(layers_list) == results['categories'][0]['doc_count']
+    assert 'Intelligence' == results['a.categories'][0]['key']
+    assert len(layers_list) == results['a.categories'][0]['doc_count']
 
 
 def test_q_text_keywords(client):
