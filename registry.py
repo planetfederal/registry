@@ -39,6 +39,8 @@ from mapproxy.config.config import load_default_config, load_config
 from mapproxy.config.spec import validate_options
 from mapproxy.config.validator import validate_references
 from mapproxy.config.loader import ProxyConfiguration, ConfigurationError
+from mapproxy.response import Response
+from mapproxy.version import version
 from mapproxy.wsgiapp import MapProxyApp
 
 from shapely.geometry import box
@@ -1113,6 +1115,15 @@ GRID_SRS_FOR_TYPE = {
 }
 
 
+class RegistryMapProxyApp(MapProxyApp):
+  def welcome_response(self, script_url):
+    html = "<html><body><h1>Registry MapProxy</h1>" 
+    html += "<h4>Version: %s</h4>" % version
+    if 'demo' in self.handlers:
+        html += '<p>You can find services and sample openlayers configuration at: <a href="%s/demo/">demo</a>' % (script_url, )
+    return Response(html, mimetype='text/html')
+    pass
+
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
        Compatible with django-registry and GeoNode.
@@ -1246,7 +1257,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
 
     conf = configure_mapproxy(extra_config)
     # Create a MapProxy App
-    app = MapProxyApp(conf.configured_services(), conf.base_config)
+    app = RegistryMapProxyApp(conf.configured_services(), conf.base_config)
 
     # Wrap it in an object that allows to get requests by path as a string.
     if(config_as_yaml):
@@ -1255,21 +1266,27 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     return app, extra_config
 
 
-def environ_from_url(path):
+def environ_from_url(path, request=None):
     """From webob.request
     TOD: Add License.
     """
     scheme = 'http'
     netloc = 'localhost:80'
+    script_name = ''
+    if request:
+        scheme = request.scheme
+        script_name = request.path
+
     if path and '?' in path:
         path_info, query_string = path.split('?', 1)
         path_info = url_unquote(path_info)
     else:
         path_info = url_unquote(path)
         query_string = ''
+
     env = {
         'REQUEST_METHOD': 'GET',
-        'SCRIPT_NAME': '',
+        'SCRIPT_NAME': script_name,
         'PATH_INFO': path_info or '',
         'QUERY_STRING': query_string,
         'SERVER_NAME': netloc.split(':')[0],
@@ -1413,17 +1430,18 @@ def layer_mapproxy(request, layer_uuid, path_info):
 
     def start_response(status, headers, exc_info=None):
         captured[:] = [status, headers, exc_info]
-        return output.append
+        return output.append, headers
 
     # Get a response from MapProxyAppy as if it was running standalone.
-    environ = environ_from_url(path_info)
+    environ = environ_from_url(path_info, request)
     app_iter = mp(environ, start_response)
 
     status = int(captured[0].split(' ')[0])
     # Create a Django response from the MapProxy WSGI response (app_iter).
     response = HttpResponse(app_iter, status=status)
-    # TODO: Append headers to response, in particular content_type is very important
-    # as some of the responses are images.
+
+    for header, value in captured[1]:
+        response[header] = value
 
     return response
 
