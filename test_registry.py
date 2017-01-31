@@ -805,11 +805,18 @@ def test_utilities(client):
     assert 50.0 == reliability_rate
 
     # Creating whole white and dark images for testing.
+    # We will include new pixel values as noise.
     img = Image.new('L', (200, 150))
+    img.putpixel((20, 20), 172)
+    img.putpixel((30, 70), 240)
+    img.putpixel((120, 100), 120)
     check_color = registry.check_image(img)
     assert 1 == check_color
 
     img = Image.new('L', (200, 150), 255)
+    img.putpixel((20, 20), 172)
+    img.putpixel((30, 70), 240)
+    img.putpixel((120, 100), 120)
     check_color = registry.check_image(img)
     assert 1 == check_color
 
