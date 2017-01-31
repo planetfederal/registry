@@ -36,21 +36,23 @@ layers_list = [
         'title_alternate': '0',
         'registry_tag': 'vehicula',
         'i': 0,
+        'source': 'None',
         'type': 'ESRI:ArcGIS:ImageServer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
-        'identifier': 'bb476997-70ff-46a8-b565-dd9d5b01daa6',
-        'title': 'layer_2 titleterm2',
+        'identifier': '0cbd4894-c9d2-4624-b4fc-ea66d2d1c71c',
+        'title': 'Part of Section 2 : New York City.',
         'creator': 'user_1',
-        'lower_corner_1': -40.0,
-        'upper_corner_1': -20.0,
-        'lower_corner_2': 40.0,
-        'upper_corner_2': 20.0,
+        'lower_corner_1': 40.72,
+        'upper_corner_1': 40.74,
+        'lower_corner_2': -74.0,
+        'upper_corner_2': -73.98,
         'title_alternate': '234',
         'registry_tag': 'tag_2',
+        'source': 'http://maps.nypl.org/warper/maps/wms/8198?',
         'i': 1,
-        'type': 'ESRI:ArcGIS:ImageServer',
+        'type': 'dataset',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -65,6 +67,7 @@ layers_list = [
         'registry_tag': 'vehicula',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
+        'source': 'None',        
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -79,6 +82,7 @@ layers_list = [
         'registry_tag': 'tag_2',
         'i': 3,
         'type': 'ESRI:ArcGIS:MapServer',
+        'source': 'None',        
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
 ]
@@ -108,19 +112,11 @@ def get_xml_block(dictionary):
         'massa potenti. Fusce dolor iaculis tempor eu. Massa velit. Risus '
         'metus enim molestie sed pede a amet parturient facilisis '
         'scelerisque dui nibh.</dct:abstract>\n'
-        '    <dc:type>dataset</dc:type>\n'
-        '    <dc:format>ESRI:ArcGIS:MapServer</dc:format>\n'
-        '    <dc:source>http://water.discomap.eea.europa.eu/arcgis/rest/'
-        'services/Noise/2007_NOISE_END_LAEA_Contours/MapServer/?f=json'
-        '</dc:source>\n'
+        '    <dc:format>Hypermap:WARPER</dc:format>\n'
+        '    <dc:source>%s</dc:source>\n'
         '    <dc:relation>%s</dc:relation>\n'
-        '    <dct:references scheme="ESRI:ArcGIS:MapServer">http://water.'
-        'discomap.eea.europa.eu/arcgis/rest/services/Noise/2007_NOISE_END_'
-        'LAEA_Contours/MapServer/?f=json</dct:references>\n'
         '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
         '<registry:property name="category" value="Intelligence"/>\n'
-        '    <dct:references scheme="WWW:LINK">http://localhost:8000/layer'
-        '/%s/</dct:references>\n'
         '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
         '4326" dimensions="2">\n'
         '        <ows:LowerCorner>%4f %4f</ows:LowerCorner>\n'
@@ -134,9 +130,9 @@ def get_xml_block(dictionary):
          dictionary['title_alternate'],
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['i'],
+         dictionary['source'],
          dictionary['identifier'],
          dictionary['registry_tag'],
-         dictionary['identifier'],
          dictionary['lower_corner_1'],
          dictionary['lower_corner_2'],
          dictionary['upper_corner_1'],
@@ -162,6 +158,7 @@ def create_layers_list(records_number):
             'upper_corner_1': random.uniform(0, 90),
             'title_alternate': 'random_id',
             'i': item,
+            'source': 'Random source',
             'registry_tag': 'random_tag',
             'upper_corner_2': random.uniform(0, 180)
         } for item in range(records_number)
@@ -422,6 +419,7 @@ def test_q_text_fields_boost(client):
             'title_alternate': '934',
             'registry_tag': 'notag_1',
             'type': 'ESRI:ArcGIS:ImageServer',
+            'source': 'None',
             'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
         },
         {
@@ -435,6 +433,7 @@ def test_q_text_fields_boost(client):
             'i': 1,
             'title_alternate': '935',
             'registry_tag': 'notag_2',
+            'source': 'None',
             'type': 'ESRI:ArcGIS:ImageServer',
             'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
         }
@@ -531,7 +530,7 @@ def test_q_geo(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 4 == results['a.matchDocs']
+    assert 3 == results['a.matchDocs']
 
     # center where no layers
     params["q_geo"] = "[-5,-5 TO 5,5]"
@@ -827,9 +826,10 @@ def test_check_layers():
 
     shutil.rmtree('yml')
 
-    valid_image, check_color = registry.layer_image(layer_uuid)
+    layer_uuid_good = '0cbd4894-c9d2-4624-b4fc-ea66d2d1c71c'
+    valid_image, check_color = registry.layer_image(layer_uuid_good)
     assert 0 == valid_image
-    assert 1 == check_color
+    assert 0 == check_color
 
     yaml_text = yaml.load(yaml_config)
 
