@@ -1712,9 +1712,7 @@ if __name__ == '__main__':  # pragma: no cover
         netlocs_dic = {}
         for line in sys.stdin:
             uuid = line.rstrip()
-            layer = layer_from_csw(uuid)
-            _, yaml_config = get_mapproxy(layer)
-            valid_bbox, valid_config, valid_image, check_color = check_layer(uuid, yaml_config)
+            valid_bbox, valid_config, valid_image, check_color = check_layer(uuid)
             output = '%s %s %s %s %s %d\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, int(time.time()))
             sys.stdout.write(output)
         sys.exit(0)
