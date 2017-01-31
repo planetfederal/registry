@@ -9,6 +9,7 @@ import shutil
 import yaml
 from datetime import datetime
 from django.test import RequestFactory
+from PIL import Image
 from pycsw.core import config
 from pycsw.core.admin import delete_records
 from pycsw.core.etree import etree
@@ -802,6 +803,15 @@ def test_utilities(client):
     assert 4 == len(new_list)
     reliability_rate = registry.compute_reliability(new_list)
     assert 50.0 == reliability_rate
+
+    # Creating whole white and dark images for testing.
+    img = Image.new('L', (200, 150))
+    check_color = registry.check_image(img)
+    assert 1 == check_color
+
+    img = Image.new('L', (200, 150), 255)
+    check_color = registry.check_image(img)
+    assert 1 == check_color
 
 
 def test_bad_mapproxy_config(client):
