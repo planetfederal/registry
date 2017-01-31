@@ -1388,12 +1388,7 @@ def get_mapproxy_png(yaml_text, mp):
 
     # Get a response from MapProxyAppy as if it was running standalone.
     environ = environ_from_url(path_info)
-    app_iter = None
-
-    try:
-        app_iter = mp(environ, start_response)
-    except:
-        pass
+    app_iter = mp(environ, start_response)
 
     return app_iter
 
@@ -1552,10 +1547,6 @@ def layer_image(uuid):
     yaml_text = yaml.load(yaml_config)
 
     app_iter = get_mapproxy_png(yaml_text, mp)
-
-    if app_iter is None:
-        valid_image, check_color = 1, 1
-        return valid_image, check_color
 
     bytes_img = BytesIO(next(app_iter))
     img = PIL.Image.open(bytes_img)
