@@ -1155,15 +1155,6 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
     }
 
     if layer.type == 'ESRI:ArcGIS:MapServer' or layer.type == 'ESRI:ArcGIS:ImageServer':
-        # blindly replace it with /arcgis/
-        url = url.replace("/ArcGIS/rest/", "/arcgis/")
-        # same for uppercase
-        url = url.replace("/arcgis/rest/", "/arcgis/")
-        # and for old versions
-        url = url.replace("ArcX/rest/services", "arcx/services")
-        # in uppercase or lowercase
-        url = url.replace("arcx/rest/services", "arcx/services")
-
         srs = 'EPSG:3857'
         bbox_srs = 'EPSG:4326'
 
