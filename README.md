@@ -49,7 +49,7 @@ Assuming ubuntu 14.04 OS.
 
 	```sh
 	pip install -r requirements.txt
-        pip install -e .
+	pip install -e .
 	```
 
 4. Configure pycsw database
