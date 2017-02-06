@@ -2,8 +2,7 @@ version: '2'
 services:
 
   elasticsearch:
-   image: elasticsearch:1.7
-   #image: terranodo/elasticsearch
+   image: terranodo/elasticsearch
 
   django:
     build: .
@@ -11,6 +10,12 @@ services:
       - '.:/code/'
     environment:
     - REGISTRY_SEARCH_URL=http://elasticsearch:9200/
+
+  angular:
+    image: terranodo/search
+    command: "npm run server"
+    ports:
+      - "3001:3001"
 
   maploom:
     image: terranodo/maploom
