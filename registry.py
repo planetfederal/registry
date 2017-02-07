@@ -1265,9 +1265,11 @@ def environ_from_url(path, request=None):
     scheme = 'http'
     netloc = 'localhost:80'
     script_name = ''
+    server_port = netloc.split(':')[1]
     if request:
         scheme = request.scheme
         script_name = request.path
+        netloc, server_port = request.get_host(), request.get_port()
 
     if path and '?' in path:
         path_info, query_string = path.split('?', 1)
@@ -1282,7 +1284,7 @@ def environ_from_url(path, request=None):
         'PATH_INFO': path_info or '',
         'QUERY_STRING': query_string,
         'SERVER_NAME': netloc.split(':')[0],
-        'SERVER_PORT': netloc.split(':')[1],
+        'SERVER_PORT': server_port,
         'HTTP_HOST': netloc,
         'SERVER_PROTOCOL': 'HTTP/1.0',
         'wsgi.version': (1, 0),
