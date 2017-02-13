@@ -353,6 +353,27 @@ def test_search_api(client):
     assert len(layers_list) == results['a.categories'][0]['doc_count']
 
 
+@pytest.mark.skip(reason='Remove this when ES with heatmap is included within travis')
+def test_heatmap(client):
+    # Test for heatmap support.
+    params = default_params.copy()    
+    params['a_hm_limit'] = 1
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 4 == results['a.matchDocs']    
+    assert results['a.hm']['minY'] == -90
+    assert results['a.hm']['maxY'] == 90 
+
+    params['a_hm_filter'] = '[0,0 TO 30, 30]'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 4 == results['a.matchDocs']    
+    assert results['a.hm']['minY'] > -90
+    assert results['a.hm']['maxY'] < 90 
+
+
 def test_q_text_keywords(client):
     params = default_params.copy()
     params["q_text"] = "alltext:(titleterm1+OR+abstractterm3)"
