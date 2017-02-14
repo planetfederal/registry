@@ -10,7 +10,7 @@ python:
 
 env:
   - VERSION=1.7 ES_URL="https://download.elasticsearch.org/elasticsearch/elasticsearch/" ES_DEB="elasticsearch-1.7.5.deb" REGISTRY_DATABASE_URL="postgres://localhost:5432/registry"
-  - VERSION=5.0 ES_URL="https://artifacts.elastic.co/downloads/elasticsearch/" ES_DEB="elasticsearch-5.0.0.deb" REGISTRY_DATABASE_URL="postgres://localhost:5432/registry"
+  - VERSION=5.1 ES_URL="https://artifacts.elastic.co/downloads/elasticsearch/" ES_DEB="elasticsearch-5.1.1.deb" REGISTRY_DATABASE_URL="postgres://localhost:5432/registry"
 
 addons:
   postgresql: "9.5"
