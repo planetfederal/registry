@@ -731,11 +731,6 @@ class SearchSerializer(serializers.Serializer):
                    "all its values would be 0. See Solr docs for more details on the response format."),
         default=0
     )
-    a_hm_gridlevel = serializers.IntegerField(
-        required=False,
-        help_text="To explicitly specify the grid level, e.g. to let a user ask for greater or courser resolution "
-                  "than the most recent request. Ignores a.hm.limit."
-    )
     a_hm_filter = serializers.CharField(
         required=False,
         help_text="To explicitly specify the grid level, e.g. to let a user ask for greater or courser resolution "
@@ -827,6 +822,8 @@ def elasticsearch(serializer, catalog):
     a_time_gap = serializer.validated_data.get("a_time_gap")
     a_time_limit = serializer.validated_data.get("a_time_limit")
     a_categories_limit = serializer.validated_data.get("a_categories_limit")
+    a_hm_limit = serializer.validated_data.get("a_hm_limit")
+    a_hm_filter = serializer.validated_data.get("a_hm_filter")
     original_response = serializer.validated_data.get("original_response")
 
     # Dict for search on Elastic engine
@@ -901,6 +898,7 @@ def elasticsearch(serializer, catalog):
             }
             range_time = {"range": range_time}
             must_array.append(range_time)
+
     # geo_shape searching
     if q_geo:
         q_geo = str(q_geo)
@@ -1000,6 +998,36 @@ def elasticsearch(serializer, catalog):
                 }
             }
         }
+    # Heatmap support.
+    if a_hm_limit:
+        # by default is q_geo.
+        heatmap_filter_box = [[Xmin, Ymax], [Xmax, Ymin]]
+        # but if user sends the hm filter:
+        if a_hm_filter:
+            a_hm_filter = str(a_hm_filter)[1:-1]
+            Ymin, Xmin = a_hm_filter.split(" TO ")[0].split(",")
+            Ymax, Xmax = a_hm_filter.split(" TO ")[1].split(",")
+            heatmap_filter_box = [[Xmin, Ymax], [Xmax, Ymin]]
+
+        heatmap = {
+            "heatmap": {
+                "field": "layer_geoshape",
+                "dist_err_pct": 0.07,
+                "geom": {
+                    "geo_shape": {
+                        "layer_geoshape": {
+                            "shape": {
+                                "type": "envelope",
+                                "coordinates": heatmap_filter_box
+                            },
+                            "relation": "within"
+                        }
+                    }
+                }
+            }
+        }
+        aggs_dic["viewport"] = heatmap
+
     # adding aggreations on body query
     if aggs_dic:
         dic_query['aggs'] = aggs_dic
@@ -1046,6 +1074,22 @@ def elasticsearch(serializer, catalog):
         if 'registry_categories' in aggs:
             data['a.categories'] = aggs['registry_categories']['registry']['buckets']
 
+        if 'viewport' in aggs:
+            hm_facet_raw = aggs["viewport"]
+            hm_facet = {
+                 'gridLevel': hm_facet_raw["grid_level"],
+                 'columns': hm_facet_raw["columns"],
+                 'rows': hm_facet_raw["rows"],
+                 'minX': hm_facet_raw["min_x"],
+                 'maxX': hm_facet_raw["max_x"],
+                 'minY': hm_facet_raw["min_y"],
+                 'maxY': hm_facet_raw["max_y"],
+                 'projection': 'EPSG:4326'
+            }
+            counts = hm_facet_raw["counts"]
+            hm_facet['counts_ints2D'] = counts
+            data["a.hm"] = hm_facet
+
     if not int(d_docs_limit) == 0:
         for item in es_response['hits']['hits']:
             # data
@@ -1055,7 +1099,6 @@ def elasticsearch(serializer, catalog):
             docs.append(item['_source'])
 
     data["d.docs"] = docs
-
     return data
 
 
