@@ -34,6 +34,8 @@ before_install:
   - jdk_switcher use oraclejdk8
   - curl -O $ES_URL$ES_DEB
   - sudo dpkg -i --force-confnew $ES_DEB
+  - wget https://www.dropbox.com/s/iepb2t39oz8v8oo/aggs-geoheatmap-5.1.1-SNAPSHOT.zip
+  - if [ $VERSION == "5.1" ]; then sudo /usr/share/elasticsearch/bin/elasticsearch-plugin install file:///$(pwd)/aggs-geoheatmap-5.1.1-SNAPSHOT.zip; fi
   - sudo service elasticsearch restart
 
 install:

@@ -353,7 +353,8 @@ def test_search_api(client):
     assert len(layers_list) == results['a.categories'][0]['doc_count']
 
 
-@pytest.mark.skip(reason='Remove this when ES with heatmap is included within travis')
+@pytest.mark.skipif(os.getenv('VERSION') != '5.1',
+                    reason='Test is performed only for elasticsearch with heatmap plugin')
 def test_heatmap(client):
     # Test for heatmap support.
     params = default_params.copy()    
