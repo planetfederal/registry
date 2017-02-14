@@ -721,6 +721,11 @@ class SearchSerializer(serializers.Serializer):
         help_text="Listing the registry categories and their corresponding number of documents indexed. "
                   "The integer value Limits the received number of categories.",
     )    
+    a_hm_gridlevel = serializers.IntegerField(
+        required=False,
+        help_text="To explicitly specify the grid level, e.g. to let a user ask for greater or courser resolution "
+                  "than the most recent request. Ignores a.hm.limit."
+    )
     a_hm_limit = serializers.IntegerField(
         required=False,
         help_text=("Non-0 triggers heatmap/grid faceting. "
@@ -822,6 +827,7 @@ def elasticsearch(serializer, catalog):
     a_time_gap = serializer.validated_data.get("a_time_gap")
     a_time_limit = serializer.validated_data.get("a_time_limit")
     a_categories_limit = serializer.validated_data.get("a_categories_limit")
+    a_hm_gridlevel = serializer.validated_data.get("a_hm_gridlevel")
     a_hm_limit = serializer.validated_data.get("a_hm_limit")
     a_hm_filter = serializer.validated_data.get("a_hm_filter")
     original_response = serializer.validated_data.get("original_response")
@@ -1026,6 +1032,12 @@ def elasticsearch(serializer, catalog):
                 }
             }
         }
+        if a_hm_gridlevel:
+            grid_level = int(a_hm_gridlevel)
+            max_cells = (32 * grid_level) * (32 * grid_level)
+            heatmap['heatmap']['grid_level'] = grid_level 
+            heatmap['heatmap']['max_cells'] = max_cells
+
         aggs_dic["viewport"] = heatmap
 
     # adding aggreations on body query
