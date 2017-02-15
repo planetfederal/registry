@@ -325,6 +325,7 @@ def record_to_dict(record):
         'max_x': max_x,
         'max_y': max_y,
         'source': record.source,
+        'source_type': record.type,
         'tile_url': '/layer/%s/wmts/%s/default_grid/{z}/{x}/{y}.png' % (record.identifier, record.title_alternate),
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
