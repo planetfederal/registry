@@ -1,31 +1,51 @@
 version: '2'
 services:
+  postgres:
+    build: 'docker/postgres'
+    expose:
+    - '5432'
 
   elasticsearch:
-   image: terranodo/elasticsearch
+   image: 'terranodo/elasticsearch'
+   expose:
+    - '9200'
 
-  django:
+  registry:
     build: .
-    volumes:
-      - '.:/code/'
     environment:
     - REGISTRY_SEARCH_URL=http://elasticsearch:9200/
+    - REGISTRY_DATABASE_URL=postgres://postgres:postgres@postgres:5432/registry
+    command: 'python registry.py runserver 0.0.0.0:8000'
+    expose:
+      - '8000'
+
+  registry_2:
+    extends:
+      service: registry
+  registry_3:
+    extends:
+      service: registry
 
   angular:
-    image: terranodo/search
-    command: "npm run server"
-    ports:
-      - "3001:3001"
+    image: 'ninjalikeme/angular-search:registry'
+    command: 'npm run server'
+    expose:
+      - '3001'
 
   maploom:
-    image: terranodo/maploom
-    command: grunt serve
+    image: 'ninjalikeme/maploom:production'
+    command: 'grunt serve'
+    expose:
+      - '3000'
 
   nginx:
-    image: geonode/nginx:registry
+    build: 'docker/nginx'
     links:
-      - django
-      - maploom
+      - registry
+      - registry_2
+      - registry_3
       - elasticsearch
+      - maploom
+      - angular
     ports:
-      - "80:80"
+      - '80:80'
