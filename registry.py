@@ -1208,6 +1208,9 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'url': url,
             'transparent': True,
         },
+        'wms_opts' : {
+            'legendgraphic' : True
+        }
     }
 
     if layer.type == 'ESRI:ArcGIS:MapServer' or layer.type == 'ESRI:ArcGIS:ImageServer':
