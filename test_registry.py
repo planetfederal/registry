@@ -96,7 +96,8 @@ layers_list = [
         'title_alternate': '1',
         'registry_tag': 'tag_wms',
         'i': 4,
-        'type': 'OGC:WMS',
+        'format': 'OGC:WMS',
+        'type': 'dataset',
         'source' : 'None',
         'modified': datetime(2004, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
@@ -127,7 +128,7 @@ def get_xml_block(dictionary):
         'massa potenti. Fusce dolor iaculis tempor eu. Massa velit. Risus '
         'metus enim molestie sed pede a amet parturient facilisis '
         'scelerisque dui nibh.</dct:abstract>\n'
-        '    <dc:format>Hypermap:WARPER</dc:format>\n'
+        '    <dc:format>%s</dc:format>\n'
         '    <dc:source>%s</dc:source>\n'
         '    <dc:relation>%s</dc:relation>\n'
         '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
@@ -145,6 +146,7 @@ def get_xml_block(dictionary):
          dictionary['title_alternate'],
          dictionary['modified'].isoformat().split('.')[0],
          dictionary['i'],
+         dictionary.get('format', 'Hypermap:WARPER'),
          dictionary['source'],
          dictionary['identifier'],
          dictionary['registry_tag'],
