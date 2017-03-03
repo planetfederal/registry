@@ -45,7 +45,7 @@ from mapproxy.wsgiapp import MapProxyApp
 
 from shapely.geometry import box
 
-from six.moves.urllib_parse import urlparse, unquote as url_unquote
+from six.moves.urllib_parse import urlparse, unquote as url_unquote, urlencode
 
 from rawes.elastic_exception import ElasticException
 
@@ -343,6 +343,18 @@ def record_to_dict(record):
             ]
         }
     }
+
+    if(record.format == 'OGC:WMS'):
+        legend_opts = {
+            'SERVICE' : 'WMS',
+            'VERSION' : '1.1.1',
+            'REQUEST' : 'GetLegendGraphic',
+            'FORMAT' : 'image/png',
+            'LAYER' : record.title_alternate
+        }
+
+        record_dict['legend_url'] = '/layer/%s/service?' % record.identifier + urlencode(legend_opts)
+
 
     record_dict = include_registry_tags(record_dict, record.xml)
 
@@ -1208,6 +1220,9 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'url': url,
             'transparent': True,
         },
+        'wms_opts' : {
+            'legendgraphic' : True
+        }
     }
 
     if layer.type == 'ESRI:ArcGIS:MapServer' or layer.type == 'ESRI:ArcGIS:ImageServer':
