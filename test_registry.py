@@ -85,9 +85,23 @@ layers_list = [
         'type': 'ESRI:ArcGIS:MapServer',
         'source': 'None',        
         'modified': datetime(2003, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    },{
+        'identifier': 'e1142992-9368-481a-8db0-dcfa5a57a7f3',
+        'title': 'layer_5 titleterm4',
+        'creator': 'user_2',
+        'lower_corner_1': 50.0,
+        'upper_corner_1': 20.0,
+        'lower_corner_2': -40.0,
+        'upper_corner_2': -20.0,
+        'title_alternate': '1',
+        'registry_tag': 'tag_wms',
+        'i': 4,
+        'type': 'OGC:WMS',
+        'source' : 'None',
+        'modified': datetime(2004, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
-]
 
+]
 
 @pytest.mark.skip(reason='')
 def get_xml_block(dictionary):
@@ -423,7 +437,7 @@ def test_q_text_fields(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 4 == results['a.matchDocs']
+    assert len(layers_list) == results['a.matchDocs']
 
     params["q_text"] = "{0} {1}".format("volutpat", "titleterm1")
     params["q_text_fields"] = "{0},{1}".format("title", "creator")
@@ -560,7 +574,7 @@ def test_q_geo(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 3 == results['a.matchDocs']
+    assert 4 == results['a.matchDocs']
 
     # center where no layers
     params["q_geo"] = "[-5,-5 TO 5,5]"
@@ -639,7 +653,7 @@ def test_q_time(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
     assert results["a.time"]["start"].upper() == "2000-01-01T00:00:00Z"
-    assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
+    assert results["a.time"]["end"].upper() == "2004-01-01T00:00:00Z"
 
     # Test histograms generation using time values.
     params["a_time_gap"] = "PT24H"
@@ -648,7 +662,7 @@ def test_q_time(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
     assert results["a.time"]["start"].upper() == "2000-03-01T00:00:00Z"
-    assert results["a.time"]["end"].upper() == "2003-03-01T00:00:00Z"
+    assert results["a.time"]["end"].upper() == "2004-03-01T00:00:00Z"
 
     # Test wrong values for a_time_gap.
     params["a_time_gap"] = "P1ye"
@@ -671,7 +685,8 @@ def test_q_time(client):
 
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
-    assert results["a.time"]["end"].upper() == "2003-01-01T00:00:00Z"
+    assert results["a.time"]["end"].upper() == "2004-01-01T00:00:00Z"
+    import sys ; print >> sys.stderr, results['a.time']
     assert len(results["a.time"]["counts"]) == len(layers_list)
 
 
