@@ -386,7 +386,7 @@ def test_heatmap(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 4 == results['a.matchDocs']
+    assert 5 == results['a.matchDocs']
     assert results['a.hm']['minY'] > -90
     assert results['a.hm']['maxY'] < 90
 
@@ -394,7 +394,7 @@ def test_heatmap(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert 4 == results['a.matchDocs']
+    assert 5 == results['a.matchDocs']
     assert results['a.hm']['gridLevel'] == 5
 
 
