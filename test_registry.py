@@ -688,7 +688,6 @@ def test_q_time(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) == results['a.matchDocs']
     assert results["a.time"]["end"].upper() == "2004-01-01T00:00:00Z"
-    import sys ; print >> sys.stderr, results['a.time']
     assert len(results["a.time"]["counts"]) == len(layers_list)
 
 
