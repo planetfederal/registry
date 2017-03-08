@@ -1,8 +1,10 @@
 import json
 import rawes
 
+import registry
+
 def test_multiindex_search():
-    es_client = rawes.Elastic('localhost:9200')
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
     es_client.put('/index1/data/1', data = {
         'text' : 'here is some text'
     })
