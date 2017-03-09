@@ -1,0 +1,34 @@
+{
+    "sort": {
+        "_score": {
+            "order": "desc"
+        }
+    },
+    "query": {
+        "bool": {
+            "filter": {
+                "geo_shape": {
+                    "layer_geoshape": {
+                        "shape": {
+                            "type": "envelope",
+                            "coordinates": [
+                                [
+                                    "0.0",
+                                    "30.0"
+                                ],
+                                [
+                                    "30.0",
+                                    "0.0"
+                                ]
+                            ]
+                        },
+                        "relation": "intersects"
+                    }
+                }
+            },
+            "must": []
+        }
+    },
+    "from": 0,
+    "size": 100
+}
