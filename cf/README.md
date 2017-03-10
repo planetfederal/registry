@@ -3,23 +3,31 @@ Cloud Foundry Deployment
 
 __Note:__ This example is for the commercial pivotal cloud foundry using the `searchly` service.
 
-+ initially create the elasticsearch service (if it doesnt exist)
+1. create the elasticsearch service (if it doesnt exist)
 
-```bash
-cf create-service searchly starter
-```
+    ```
+    cf create-service searchly starter
+    ```
 
-+ push your app to cloudfoundry
+2. push your app to cloudfoundry
 
-__Note:__ Adjust the name if you need in the yaml file.
+    __Note:__ Adjust the yaml file as needed.
 
-```yaml
-applications:
-- name: CUSTOM_DOMAIN
-```
+    ```yaml
+    applications:
+    - name: changeme
+    services:
+        - changeme
+    ```
 
-```bash
-cf push -f cf/pcf_dev.yml
-```
+    ```bash
+    cf push -f cf/pcf_example.yml -c "bash ./cf/init.sh"
+    ```
 
-+ access your app at {app_name}.cfapps.io
+3. access your app at __${app_name}.cfapps.io__
+
+4. Future updates only run the following command:
+
+  ```bash
+  cf push -f cf/pcf_example.yml
+  ```   

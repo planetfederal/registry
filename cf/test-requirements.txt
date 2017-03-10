@@ -1,5 +1,0 @@
-# tests
-pytest-django==3.0
-pytest==3.0
-coveralls
-flake8

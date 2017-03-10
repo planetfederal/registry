@@ -5,6 +5,7 @@
 # pycsw
 pycsw==2.1.dev20161019
 SQLAlchemy==1.1.2
+psycopg2
 
 # django
 django==1.9

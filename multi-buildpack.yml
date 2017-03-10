@@ -1,3 +1,0 @@
-buildpacks:
-  - https://github.com/boundlessgeo/osgeolib-buildpack
-  - https://github.com/cloudfoundry/python-buildpack
