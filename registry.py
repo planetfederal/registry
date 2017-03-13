@@ -1031,7 +1031,7 @@ def elasticsearch(serializer, catalog):
         heatmap = {
             "heatmap": {
                 "field": "layer_geoshape",
-                "dist_err_pct": 0.07,
+                "dist_err_pct": 0.09,
                 "geom": {
                     "geo_shape": {
                         "layer_geoshape": {
