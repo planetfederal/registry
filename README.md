@@ -233,6 +233,8 @@ Troubleshooting
 
 	- Navigate through mapproxy web server and check the logs in terminal.
 
+	- For arcgis servers, make sure the url path does not have the *?f=json*. Also, verify that layer coordinates are in wgs84 projection.
+
 
 Features
 ========
