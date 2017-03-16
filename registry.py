@@ -11,7 +11,6 @@ import sys
 import time
 import getopt
 import yaml
-import io
 import logging
 
 from dateutil import tz
@@ -343,15 +342,14 @@ def record_to_dict(record):
 
     if(record.format == 'OGC:WMS'):
         legend_opts = {
-            'SERVICE' : 'WMS',
-            'VERSION' : '1.1.1',
-            'REQUEST' : 'GetLegendGraphic',
-            'FORMAT' : 'image/png',
-            'LAYER' : record.title_alternate
+            'SERVICE': 'WMS',
+            'VERSION': '1.1.1',
+            'REQUEST': 'GetLegendGraphic',
+            'FORMAT': 'image/png',
+            'LAYER': record.title_alternate
         }
 
         record_dict['legend_url'] = '/layer/%s/service?' % record.identifier + urlencode(legend_opts)
-
 
     record_dict = include_registry_tags(record_dict, record.xml)
 
@@ -734,7 +732,7 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Listing the registry categories and their corresponding number of documents indexed. "
                   "The integer value Limits the received number of categories.",
-    )    
+    )
     a_hm_gridlevel = serializers.IntegerField(
         required=False,
         help_text="To explicitly specify the grid level, e.g. to let a user ask for greater or courser resolution "
@@ -1049,7 +1047,7 @@ def elasticsearch(serializer, catalog):
         if a_hm_gridlevel:
             grid_level = int(a_hm_gridlevel)
             max_cells = (32 * grid_level) * (32 * grid_level)
-            heatmap['heatmap']['grid_level'] = grid_level 
+            heatmap['heatmap']['grid_level'] = grid_level
             heatmap['heatmap']['max_cells'] = max_cells
 
         aggs_dic["viewport"] = heatmap
@@ -1103,14 +1101,14 @@ def elasticsearch(serializer, catalog):
         if 'viewport' in aggs:
             hm_facet_raw = aggs["viewport"]
             hm_facet = {
-                 'gridLevel': hm_facet_raw["grid_level"],
-                 'columns': hm_facet_raw["columns"],
-                 'rows': hm_facet_raw["rows"],
-                 'minX': hm_facet_raw["min_x"],
-                 'maxX': hm_facet_raw["max_x"],
-                 'minY': hm_facet_raw["min_y"],
-                 'maxY': hm_facet_raw["max_y"],
-                 'projection': 'EPSG:4326'
+                'gridLevel': hm_facet_raw["grid_level"],
+                'columns': hm_facet_raw["columns"],
+                'rows': hm_facet_raw["rows"],
+                'minX': hm_facet_raw["min_x"],
+                'maxX': hm_facet_raw["max_x"],
+                'minY': hm_facet_raw["min_y"],
+                'maxY': hm_facet_raw["max_y"],
+                'projection': 'EPSG:4326'
             }
             counts = hm_facet_raw["counts"]
             hm_facet['counts_ints2D'] = counts
@@ -1186,13 +1184,15 @@ GRID_SRS_FOR_TYPE = {
 
 
 class RegistryMapProxyApp(MapProxyApp):
-  def welcome_response(self, script_url):
-    html = "<html><body><h1>Registry MapProxy</h1>" 
-    html += "<h4>Version: %s</h4>" % version
-    if 'demo' in self.handlers:
-        html += '<p>You can find services and sample openlayers configuration at: <a href="%s/demo/">demo</a>' % (script_url, )
-    return Response(html, mimetype='text/html')
-    pass
+    def welcome_response(self, script_url):
+        html = "<html><body><h1>Registry MapProxy</h1>"
+        html += "<h4>Version: %s</h4>" % version
+        if 'demo' in self.handlers:
+            html += ('<p>You can find services and sample openlayers configuration at:'
+                     '<a href="%s/demo/">demo</a>') % (script_url, )
+        return Response(html, mimetype='text/html')
+        pass
+
 
 def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_as_yaml=True):
     """Creates a mapproxy config for a given layer-like object.
@@ -1221,8 +1221,8 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'url': url,
             'transparent': True,
         },
-        'wms_opts' : {
-            'legendgraphic' : True
+        'wms_opts': {
+            'legendgraphic': True
         }
     }
 
@@ -1391,6 +1391,7 @@ def layer_from_csw(layer_uuid):
         layer = layer_ids[0]
 
     return layer
+
 
 '''
 Return the layer as JSON
@@ -1573,16 +1574,16 @@ def check_config(layer_uuid, yaml_config, folder):
 
 
 def check_bbox(yml_config):
-    if not 'services' in yml_config:
+    if 'services' not in yml_config:
         return 1
     service = yml_config['services']
 
-    if not 'wms' in service:
+    if 'wms' not in service:
         return 1
 
     wms = service['wms']
 
-    if not 'bbox' in wms:
+    if 'bbox' not in wms:
         return 1
 
     bbox_string = wms['bbox']
@@ -1660,7 +1661,7 @@ def check_layer(uuid, yml_folder='yml'):
     if valid_bbox != 1 and netloc_counter <= REGISTRY_MAXRECORDS_PER_NETLOC:
         valid_image, check_color = layer_image(uuid)
 
-    return valid_bbox, valid_config, valid_image , check_color
+    return valid_bbox, valid_config, valid_image, check_color
 
 
 def check_netloc(layer):
@@ -1682,10 +1683,10 @@ def parse_values_from_string(line):
     timestamp = "{0}".format(datetime.datetime.fromtimestamp(int(unix_timestamp)))
 
     reliability_dic = {
-        'valid_bbox' : valid_bbox,
-        'valid_config' : valid_config,
-        'valid_image' : valid_image,
-        'check_color' : check_color,
+        'valid_bbox': valid_bbox,
+        'valid_config': valid_config,
+        'valid_image': valid_image,
+        'check_color': check_color,
         'timestamp': timestamp
     }
 
@@ -1791,7 +1792,12 @@ if __name__ == '__main__':  # pragma: no cover
         for line in sys.stdin:
             uuid = line.rstrip()
             valid_bbox, valid_config, valid_image, check_color = check_layer(uuid)
-            output = '%s %s %s %s %s %d\n' % (uuid, valid_bbox, valid_config, valid_image, check_color, int(time.time()))
+            output = '%s %s %s %s %s %d\n' % (uuid,
+                                              valid_bbox,
+                                              valid_config,
+                                              valid_image,
+                                              check_color,
+                                              int(time.time()))
             sys.stdout.write(output)
         sys.exit(0)
 
