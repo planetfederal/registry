@@ -100,8 +100,19 @@ layers_list = [
         'type': 'dataset',
         'source' : 'None',
         'modified': datetime(2004, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
+    },
+    {
+        'identifier': 'e1142992-9368-481a-8db0-dcfa5a57a7g3',
+        'title': 'layer_6 titleterm4',
+        'creator': 'user_3',
+        'title_alternate': '7',
+        'registry_tag': 'not',
+        'i': 5,
+        'format': 'OGC:WMS',
+        'type': 'dataset',
+        'source' : 'None',
+        'modified': datetime(2004, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     }
-
 ]
 
 @pytest.mark.skip(reason='')
@@ -133,12 +144,6 @@ def get_xml_block(dictionary):
         '    <dc:relation>%s</dc:relation>\n'
         '<registry:property name="ContactInformation/Primary/organization" value="%s"/>\n'
         '<registry:property name="category" value="Intelligence"/>\n'
-        '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/'
-        '4326" dimensions="2">\n'
-        '        <ows:LowerCorner>%4f %4f</ows:LowerCorner>\n'
-        '        <ows:UpperCorner>%4f %4f</ows:UpperCorner>\n'
-        '    </ows:BoundingBox>\n'
-        '    </csw:Record>\n'
     ) % (dictionary['identifier'],
          dictionary['title'],
          dictionary['creator'],
@@ -149,11 +154,21 @@ def get_xml_block(dictionary):
          dictionary.get('format', 'Hypermap:WARPER'),
          dictionary['source'],
          dictionary['identifier'],
-         dictionary['registry_tag'],
-         dictionary['lower_corner_1'],
-         dictionary['lower_corner_2'],
-         dictionary['upper_corner_1'],
-         dictionary['upper_corner_2'])
+         dictionary['registry_tag'])
+
+    if 'lower_corner_1' in dictionary.keys():
+        bbox_string = (
+            '    <ows:BoundingBox crs="http://www.opengis.net/def/crs/EPSG/0/4326" dimensions="2">\n'
+            '        <ows:LowerCorner>%4f %4f</ows:LowerCorner>\n'
+            '        <ows:UpperCorner>%4f %4f</ows:UpperCorner>\n'
+            '    </ows:BoundingBox>\n'
+        ) % (dictionary['lower_corner_1'],
+             dictionary['lower_corner_2'],
+             dictionary['upper_corner_1'],
+             dictionary['upper_corner_2'])
+        xml_block += bbox_string
+
+    xml_block += '    </csw:Record>\n'
 
     return xml_block
 
@@ -261,7 +276,7 @@ def test_create_transaction(client):
     response = client.get(catalog_search_api)
     assert 200 == response.status_code
     search_response = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == search_response['a.matchDocs']
+    assert len(layers_list) - 1 == search_response['a.matchDocs']
     assert response.get('Content-Type') == 'application/json'
 
     layer_uuid = 'f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170'
@@ -296,7 +311,7 @@ def test_search_api(client):
     response = client.get(catalog_search_api, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
     # Test invalidated d_docs_page.
     params = default_params.copy()
@@ -351,7 +366,7 @@ def test_search_api(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
     # Saarch only in registry subfield.
     params['q_registry_text'] = 'vehicula'
@@ -366,7 +381,7 @@ def test_search_api(client):
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 'Intelligence' == results['a.categories'][0]['key']
-    assert len(layers_list) == results['a.categories'][0]['doc_count']
+    assert len(layers_list) - 1 == results['a.categories'][0]['doc_count']
 
 
 @pytest.mark.skipif(os.getenv('VERSION') != '5.1',
@@ -439,7 +454,7 @@ def test_q_text_fields(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
     params["q_text"] = "{0} {1}".format("volutpat", "titleterm1")
     params["q_text_fields"] = "{0},{1}".format("title", "creator")
@@ -605,7 +620,7 @@ def test_q_time(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
     # test range
     # entire year 2000
@@ -625,7 +640,7 @@ def test_q_time(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
     # Test error when q_time is not given.
     params["a_time_limit"] = 1
@@ -653,7 +668,7 @@ def test_q_time(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
     assert results["a.time"]["start"].upper() == "2000-01-01T00:00:00Z"
     assert results["a.time"]["end"].upper() == "2004-01-01T00:00:00Z"
 
@@ -662,7 +677,7 @@ def test_q_time(client):
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
     assert results["a.time"]["start"].upper() == "2000-03-01T00:00:00Z"
     assert results["a.time"]["end"].upper() == "2004-03-01T00:00:00Z"
 
@@ -686,9 +701,9 @@ def test_q_time(client):
     assert 200 == response.status_code
 
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
     assert results["a.time"]["end"].upper() == "2004-01-01T00:00:00Z"
-    assert len(results["a.time"]["counts"]) == len(layers_list)
+    assert len(results["a.time"]["counts"]) == len(layers_list) - 1
 
 
 def test_mapproxy(client):
@@ -760,7 +775,7 @@ def test_reindex_records(client):
     response = client.get(catalog_search_api, default_params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == results['a.matchDocs']
+    assert len(layers_list) - 1 == results['a.matchDocs']
 
 
 def test_vcaps(client):
@@ -1040,7 +1055,7 @@ def test_load_records(client):
     response = client.get(catalog_search_api)
     assert 200 == response.status_code
     search_response = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) == search_response['a.matchDocs']
+    assert len(layers_list) - 1 == search_response['a.matchDocs']
 
     test_clear_records(client)
 

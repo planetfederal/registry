@@ -308,10 +308,7 @@ def record_to_dict(record):
     if record.title:
         record.title = record.title.encode('ascii', 'ignore').decode('utf-8')
 
-    # Get bounding box from wkt geometry if it exists in the record.
-    bbox = (-180, -90, 180, 90)
-    if record.wkt_geometry:
-        bbox = wkt2geom(record.wkt_geometry)
+    bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
 
     record_dict = {
@@ -456,6 +453,9 @@ class RegistryRepository(Repository):
             return
         if not check_index_exists(self.catalog):
             print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
+            return
+        if not record.wkt_geometry:
+            print('Cannot add layer {0}. Layer without wkt'.format(record.identifier))
             return
 
         es_dict = record_to_dict(record)
@@ -1749,7 +1749,7 @@ def re_index_layers(catalog_slug):
         print('Retrieving records from position {0}'.format(start_position))
         records_list = repo.query('', startposition=start_position)[1]
         print('Sending dictionary to elasticsearch\n')
-        data_dict = [json.dumps(record_to_dict(record)) for record in records_list]
+        data_dict = [json.dumps(record_to_dict(record)) for record in records_list if record.wkt_geometry]
         index_with_bulk(catalog_slug, data_dict)
 
 
