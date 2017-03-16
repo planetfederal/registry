@@ -127,11 +127,18 @@ Usage
 	curl -XGET http://localhost:8000/layer/<layer_uuid>.png
 	```
 
+9. Re-index layers from pycsw database.
+
+	```sh
+	python registry.py pycsw -c reindex -s catalog_slug
+	```
+
 9. Delete catalog.
 
 	```sh
 	curl -XDELETE http://localhost:8000/catalog/<catalog_slug>/csw
 	```
+
 
 You should see the indexed information. The ```a.matchDocs``` value refers
 to the number of layers returned by the search api.

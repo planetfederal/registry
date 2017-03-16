@@ -450,6 +450,7 @@ class RegistryRepository(Repository):
 
     def insert(self, *args, **kwargs):
         record = args[0]
+        record.xml = record.xml.decode('utf-8')
         super(RegistryRepository, self).insert(*args)
         if self.es_status != 200:
             return
@@ -1031,7 +1032,7 @@ def elasticsearch(serializer, catalog):
         heatmap = {
             "heatmap": {
                 "field": "layer_geoshape",
-                "dist_err_pct": 0.09,
+                "dist_err_pct": 0.08,
                 "geom": {
                     "geo_shape": {
                         "layer_geoshape": {
@@ -1731,6 +1732,27 @@ def api_config_view(request):
     return response
 
 
+def index_with_bulk(catalog_slug, data_dict):
+    es_endpoint = '{0}/layer/_bulk'.format(catalog_slug)
+    es, _ = es_connect(url=REGISTRY_SEARCH_URL)
+    bulk_body = '{"index":{}}\n' + '\n{"index":{}}\n'.join(data_dict) + '\n{"index":{}}'
+    es.post(es_endpoint, data=bulk_body)
+
+
+def re_index_layers(catalog_slug):
+    # Fetching number of records.
+    repo = RegistryRepository()
+    size, _ = repo.query('')
+
+    # Loop retreiving records from db and send to es.
+    for start_position in range(0, int(size), 10):
+        print('Retrieving records from position {0}'.format(start_position))
+        records_list = repo.query('', startposition=start_position)[1]
+        print('Sending dictionary to elasticsearch\n')
+        data_dict = [json.dumps(record_to_dict(record)) for record in records_list]
+        index_with_bulk(catalog_slug, data_dict)
+
+
 urlpatterns = [
     url(r'^$', readme_view),
     url(r'^csw$', csw_view),
@@ -1793,7 +1815,8 @@ if __name__ == '__main__':  # pragma: no cover
         available_commands = ['setup_db',
                               'get_sysprof',
                               'load_records',
-                              'list_layers']
+                              'list_layers',
+                              'reindex']
 
         if COMMAND not in available_commands:
             print('pycsw supports only the following commands: %s' % available_commands)
@@ -1801,6 +1824,14 @@ if __name__ == '__main__':  # pragma: no cover
 
         if COMMAND == 'setup_db':
             pycsw_admin.setup_db(database, table, home)
+
+        elif COMMAND == 'reindex':
+            if not catalog_slug:
+                print('Undefined catalog slug in command line input')
+                sys.exit(1)
+            if not check_index_exists(catalog_slug):
+                create_index(catalog_slug)
+            re_index_layers(catalog_slug)
 
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())

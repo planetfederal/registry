@@ -740,6 +740,29 @@ def test_mapproxy(client):
     assert 200 == response.status_code
 
 
+def test_reindex_records(client):
+    response = client.delete('/catalog/{0}/csw'.format(catalog_slug))
+    assert 200 == response.status_code
+    assert 'removed' in response.content.decode('utf-8')
+
+    # Test empty list of catalogs.
+    response = client.get('/catalog')
+    assert 404 == response.status_code
+    assert 'Empty' in response.content.decode('utf-8')
+
+    registry.create_index(catalog_slug)
+    registry.re_index_layers(catalog_slug)
+
+    # Provisional hack to refresh documents in elasticsearch.
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.post('/_refresh')
+
+    response = client.get(catalog_search_api, default_params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert len(layers_list) == results['a.matchDocs']
+
+
 def test_vcaps(client):
     SAMPLE_VCAPS = r"""{
         "searchly": [
