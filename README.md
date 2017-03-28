@@ -134,11 +134,15 @@ Usage
 	```
 
 9. Delete catalog.
-
+	- Removing records using a server request.
 	```sh
 	curl -XDELETE http://localhost:8000/catalog/<catalog_slug>/csw
 	```
 
+	- From command line.
+	```sh
+	python registry.py pycsw -c delete_records -s catalog_slug
+	```
 
 You should see the indexed information. The ```a.matchDocs``` value refers
 to the number of layers returned by the search api.

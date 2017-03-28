@@ -248,7 +248,7 @@ def csw_view(request, catalog=None):
         return HttpResponse(message, status=200)
 
     if catalog and request.META['REQUEST_METHOD'] == 'DELETE':
-        message, status = delete_index(catalog)
+        message, status = delete_records(catalog)
         return HttpResponse(message, status=status)
 
     env = request.META.copy()
@@ -273,6 +273,18 @@ def csw_view(request, catalog=None):
                             )
 
     return response
+
+
+def delete_records(catalog_slug):
+    '''
+    This function removes records from both csw database and elasticsearch
+    '''
+    pycsw_admin.delete_records(config.StaticContext(),
+                               PYCSW['repository']['database'],
+                               PYCSW['repository']['table'])
+    message, status = delete_index(catalog_slug)
+
+    return message, status
 
 
 def delete_index(catalog, es=None):
@@ -1546,15 +1558,6 @@ def readme_view(request):
     return response
 
 
-def load_records(repo, parsed_xml, context):
-    """Load metadata records from directory of files to database"""
-    xml_records = parsed_xml.xpath('//csw:Insert', namespaces=context.namespaces)[0]
-    parsed_records = xml_records.xpath('child::*')
-    parsed_records = [metadata.parse_record(context, f, repo)[0] for f in parsed_records]
-
-    [repo.insert(r, 'local', r.insert_date) for r in parsed_records]
-
-
 def check_config(layer_uuid, yaml_config, folder):
     yml_file = os.path.join(folder, '%s.yml' % layer_uuid)
     if os.path.exists(yml_file):
@@ -1821,6 +1824,7 @@ if __name__ == '__main__':  # pragma: no cover
         available_commands = ['setup_db',
                               'get_sysprof',
                               'load_records',
+                              'export_records',
                               'list_layers',
                               'reindex']
 
@@ -1842,6 +1846,10 @@ if __name__ == '__main__':  # pragma: no cover
         elif COMMAND == 'get_sysprof':
             print(pycsw_admin.get_sysprof())
 
+        elif COMMAND == 'export_records':
+            context = config.StaticContext()
+            pycsw_admin.export_records(context, database, table, xml_dirpath)
+
         elif COMMAND == 'list_layers':
             context = config.StaticContext()
             repo = RegistryRepository(PYCSW['repository']['database'],
@@ -1851,6 +1859,12 @@ if __name__ == '__main__':  # pragma: no cover
             layers_list = repo.query('', maxrecords=len_layers)[1]
             for layer in layers_list:
                 print(layer.identifier)
+
+        elif COMMAND == 'delete_records':
+            if not catalog_slug:
+                print('Undefined catalog slug in command line input')
+                sys.exit(1)
+            delete_records(catalog_slug)
 
         elif COMMAND == 'load_records':
             if os.path.isfile(xml_dirpath):
@@ -1866,9 +1880,7 @@ if __name__ == '__main__':  # pragma: no cover
 
             # Create repository object with catalog slug.
             context = config.StaticContext()
-            repo = RegistryRepository(PYCSW['repository']['database'],
-                                      context,
-                                      table=PYCSW['repository']['table'])
+            repo = RegistryRepository(database, context, table)
             repo.catalog = catalog_slug
 
             # Create index with mapping in Elasticsarch.
@@ -1878,7 +1890,8 @@ if __name__ == '__main__':  # pragma: no cover
             # Parse each xml file and insert records.
             for xml_file in files_names:
                 parsed_xml = etree.parse(xml_file, context.parser)
-                load_records(repo, parsed_xml, context)
+                parsed_record = metadata.parse_record(context, parsed_xml, repo)[0]
+                repo.insert(parsed_record, 'local', parsed_record.insert_date)
 
         sys.exit(0)
 

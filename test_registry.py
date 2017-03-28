@@ -756,9 +756,9 @@ def test_mapproxy(client):
 
 
 def test_reindex_records(client):
-    response = client.delete('/catalog/{0}/csw'.format(catalog_slug))
-    assert 200 == response.status_code
-    assert 'removed' in response.content.decode('utf-8')
+    message, status = registry.delete_index(catalog_slug)
+    assert 200 == status
+    assert 'removed' in message
 
     # Test empty list of catalogs.
     response = client.get('/catalog')
@@ -1033,31 +1033,6 @@ def test_elasticsearch(client):
 
     test_clear_records(client)
 
-
-def test_load_records(client):
-    test_create_catalog(client)
-
-    repository = registry.RegistryRepository()
-    repository.catalog = catalog_slug
-    payload = construct_payload(layers_list=layers_list)
-    xml_records = etree.fromstring(payload)
-    context = config.StaticContext()
-
-    registry.load_records(repository, xml_records, context)
-    # Provisional hack to refresh documents in elasticsearch.
-    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
-    es_client.post('/_refresh')
-
-    records_number = int(repository.query('')[0])
-    assert len(layers_list) == records_number
-
-    # Verify records added into elasticsearch using the search api.
-    response = client.get(catalog_search_api)
-    assert 200 == response.status_code
-    search_response = json.loads(response.content.decode('utf-8'))
-    assert len(layers_list) - 1 == search_response['a.matchDocs']
-
-    test_clear_records(client)
 
 if __name__ == '__main__':
     pytest.main()
