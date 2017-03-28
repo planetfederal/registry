@@ -1826,6 +1826,7 @@ if __name__ == '__main__':  # pragma: no cover
                               'load_records',
                               'export_records',
                               'list_layers',
+                              'optimize_db',
                               'reindex']
 
         if COMMAND not in available_commands:
@@ -1834,6 +1835,10 @@ if __name__ == '__main__':  # pragma: no cover
 
         if COMMAND == 'setup_db':
             pycsw_admin.setup_db(database, table, home)
+
+        elif COMMAND == 'optimize_db':
+            context = config.StaticContext()
+            pycsw_admin.optimize_db(context, database, table)
 
         elif COMMAND == 'reindex':
             if not catalog_slug:

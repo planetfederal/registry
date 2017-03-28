@@ -58,6 +58,11 @@ Assuming ubuntu 14.04 OS.
 	python registry.py pycsw -c setup_db
 	```
 
+5. Database optimization (works only with PostgreSQL and MySQL)
+
+	```sh
+	python registry.py pycsw -c optimize_db
+	```
 
 Usage
 =====
