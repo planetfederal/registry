@@ -1852,6 +1852,10 @@ if __name__ == '__main__':  # pragma: no cover
             print(pycsw_admin.get_sysprof())
 
         elif COMMAND == 'export_records':
+            if not xml_dirpath:
+                print('Undefined xml files path in command line input')
+                sys.exit(1)
+
             context = config.StaticContext()
             pycsw_admin.export_records(context, database, table, xml_dirpath)
 
