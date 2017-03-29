@@ -65,6 +65,7 @@ REGISTRY_MAPPING_DIST_ERR_PCT = os.getenv('REGISTRY_MAPPING_DIST_ERR_PCT', 0.025
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 REGISTRY_MAXRECORDS_PER_NETLOC = int(os.getenv('REGISTRY_MAXRECORDS_PER_NETLOC', '3600'))
+REGISTRY_CSW_MAX_RECORDS = int(os.getenv('REGISTRY_CSW_MAX_RECORDS', '1000'))
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
@@ -1747,12 +1748,10 @@ def re_index_layers(catalog_slug):
     # Fetching number of records.
     repo = RegistryRepository()
     size, _ = repo.query('')
-
     # Loop retreiving records from db and send to es.
-    for start_position in range(0, int(size), 10):
+    for start_position in range(0, int(size), REGISTRY_CSW_MAX_RECORDS):
         print('Retrieving records from position {0}'.format(start_position))
-        records_list = repo.query('', startposition=start_position)[1]
-        print('Sending dictionary to elasticsearch\n')
+        records_list = repo.query('', startposition=start_position, maxrecords=REGISTRY_CSW_MAX_RECORDS)[1]
         data_dict = [json.dumps(record_to_dict(record)) for record in records_list if record.wkt_geometry]
         index_with_bulk(catalog_slug, data_dict)
 
@@ -1876,31 +1875,16 @@ if __name__ == '__main__':  # pragma: no cover
             delete_records(catalog_slug)
 
         elif COMMAND == 'load_records':
-            if os.path.isfile(xml_dirpath):
-                files_names = [xml_dirpath]
-            elif os.path.isdir(xml_dirpath):
-                files_names = [os.path.join(xml_dirpath, f) for f in os.listdir(xml_dirpath)]
-            else:
-                print('Undefined xml files path in command line input')
-                sys.exit(1)
             if not catalog_slug:
                 print('Undefined catalog slug in command line input')
                 sys.exit(1)
 
-            # Create repository object with catalog slug.
-            context = config.StaticContext()
-            repo = RegistryRepository(database, context, table)
-            repo.catalog = catalog_slug
-
-            # Create index with mapping in Elasticsarch.
+            # First we load records to pycsw database.
+            pycsw_admin.load_records(config.StaticContext(), database, table, xml_dirpath)
+            # Then, we execute reindex to elasticsearch.
             if not check_index_exists(catalog_slug):
                 create_index(catalog_slug)
-
-            # Parse each xml file and insert records.
-            for xml_file in files_names:
-                parsed_xml = etree.parse(xml_file, context.parser)
-                parsed_record = metadata.parse_record(context, parsed_xml, repo)[0]
-                repo.insert(parsed_record, 'local', parsed_record.insert_date)
+            re_index_layers(catalog_slug)
 
         sys.exit(0)
 
