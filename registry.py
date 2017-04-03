@@ -1875,16 +1875,14 @@ if __name__ == '__main__':  # pragma: no cover
             delete_records(catalog_slug)
 
         elif COMMAND == 'load_records':
-            if not catalog_slug:
-                print('Undefined catalog slug in command line input')
-                sys.exit(1)
-
             # First we load records to pycsw database.
-            pycsw_admin.load_records(config.StaticContext(), database, table, xml_dirpath)
-            # Then, we execute reindex to elasticsearch.
-            if not check_index_exists(catalog_slug):
-                create_index(catalog_slug)
-            re_index_layers(catalog_slug)
+            pycsw_admin.load_records(config.StaticContext(),
+                                     database,
+                                     table,
+                                     xml_dirpath,
+                                     recursive=False,
+                                     force_update=True)
+
 
         sys.exit(0)
 
