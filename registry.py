@@ -1824,6 +1824,7 @@ if __name__ == '__main__':  # pragma: no cover
                               'get_sysprof',
                               'load_records',
                               'export_records',
+                              'delete_records',
                               'list_layers',
                               'optimize_db',
                               'reindex']
