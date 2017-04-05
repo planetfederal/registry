@@ -266,6 +266,7 @@ def csw_view(request, catalog=None):
         PYCSW['manager']['transactions'] = 'true'
 
     csw = server.Csw(PYCSW, env)
+    csw.orm = 'sqlalchemy'
     status, content = csw.dispatch_wsgi()
     status_code = int(status[0:3])
     response = HttpResponse(content,
