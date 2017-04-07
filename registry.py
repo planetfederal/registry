@@ -479,6 +479,22 @@ class RegistryRepository(Repository):
             print(e)
 
 
+    def delete(self, *args, **kwargs):
+        # Get layer uuid from pycsw.
+        uuid = args[0]['values'][0]
+
+        # Remove layer executing pycsw repository delete function.
+        count = super(RegistryRepository, self).delete(*args)
+        if self.es_status != 200:
+            return count
+
+        # Return layer id and catalog from elasticsearch.
+        _ , layer_id, layer_index = get_data_from_es(self.es, uuid)
+        self.es.delete('%s/layer/%s' % (layer_index, layer_id))
+
+        return count
+
+
 def parse_get_params(request):
     """
     parse all url get params that contains dots in a representation of

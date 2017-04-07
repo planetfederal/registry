@@ -257,6 +257,56 @@ def test_create_catalog(client):
     assert response.get('Content-Type') == 'application/json'
 
 
+def test_single_transaction(client):
+    # Create payload and insert data into both pycsw database and elasticsearch.
+    payload = construct_payload(layers_list=layers_list[:2])
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), payload, content_type='text/xml')
+    assert 200 == response.status_code
+
+    # Provisional hack to refresh documents in elasticsearch.
+    es_client = rawes.Elastic(registry.REGISTRY_SEARCH_URL)
+    es_client.post('/_refresh')
+
+    # Verify records have been added into both pycsw.
+    repository = registry.RegistryRepository()
+    records_number = int(repository.query('')[0])
+    assert 2 == records_number
+
+    # Verify records added into elasticsearch using the search api.
+    response = client.get(catalog_search_api)
+    assert 200 == response.status_code
+    search_response = json.loads(response.content.decode('utf-8'))
+    assert 2 == search_response['a.matchDocs']
+    assert response.get('Content-Type') == 'application/json'
+
+    # Remove records using individual requests.
+    request_string = (
+        '<csw:Transaction xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:ogc="http://www.opengis.net/ogc" '
+        'xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" '
+        'xmlns:ows="http://www.opengis.net/ows" '
+        'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xsi:schemaLocation="http://www.opengis.net/cat/csw/2.0.2 '
+        'http://schemas.opengis.net/csw/2.0.2/CSW-publication.xsd" service="CSW" version="2.0.2">\n'
+        '  <csw:Delete>\n'
+        '    <csw:Constraint version="1.1.0">\n'
+        '      <ogc:Filter>\n'
+        '        <ogc:PropertyIsLike wildCard="%" singleChar="." escapeChar="\">\n'
+        '          <ogc:PropertyName>dc:identifier</ogc:PropertyName>\n'
+        '          <ogc:Literal>{0}</ogc:Literal>\n'
+        '        </ogc:PropertyIsLike>\n'
+        '      </ogc:Filter>\n'
+        '    </csw:Constraint>\n'
+        '  </csw:Delete>\n'
+        '</csw:Transaction>\n'
+    )
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), request_string.format(layers_list[0]['identifier']), content_type='text/xml')
+    assert 200 == response.status_code
+
+    response = client.post('/catalog/{0}/csw'.format(catalog_slug), request_string.format(layers_list[1]['identifier']), content_type='text/xml')
+    assert 200 == response.status_code
+
+
 def test_create_transaction(client):
     # Create payload and insert data into both pycsw database and elasticsearch.
     payload = construct_payload(layers_list=layers_list)
