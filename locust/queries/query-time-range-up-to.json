@@ -1,0 +1,42 @@
+{
+    "sort": {
+        "_score": {
+            "order": "desc"
+        }
+    },
+    "query": {
+        "bool": {
+            "filter": {
+                "geo_shape": {
+                    "layer_geoshape": {
+                        "shape": {
+                            "type": "envelope",
+                            "coordinates": [
+                                [
+                                    "-180.0",
+                                    "90.0"
+                                ],
+                                [
+                                    "180.0",
+                                    "-90.0"
+                                ]
+                            ]
+                        },
+                        "relation": "intersects"
+                    }
+                }
+            },
+            "must": [
+                {
+                    "range": {
+                        "layer_date": {
+                            "lte": "2001-01-01T00:00:00Z"
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "from": 0,
+    "size": 100
+}
