@@ -50,9 +50,7 @@ from rawes.elastic_exception import ElasticException
 
 netlocs_dic = {}
 
-LOGGER = logging.getLogger(__name__)
-
-__version__ = 0.1
+__version__ = 0.2
 
 ALLOWED_HOSTS = [os.getenv('REGISTRY_ALLOWED_HOSTS', '*')]
 DEBUG = strtobool(os.getenv('REGISTRY_DEBUG', 'True'))
@@ -66,6 +64,9 @@ REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 REGISTRY_MAXRECORDS_PER_NETLOC = int(os.getenv('REGISTRY_MAXRECORDS_PER_NETLOC', '3600'))
 REGISTRY_CSW_MAX_RECORDS = int(os.getenv('REGISTRY_CSW_MAX_RECORDS', '1000'))
+REGISTRY_LOG_FILE_PATH = os.getenv('REGISTRY_LOG_FILE_PATH', '/tmp/registry.log')
+REGISTRY_LOG_LEVEL = os.getenv('REGISTRY_LOG_LEVEL', 'DEBUG')
+PYCSW_LOG_LEVEL = os.getenv('PYCSW_LOG_LEVEL', 'DEBUG')
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
@@ -87,12 +88,25 @@ REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
 
 TIMEZONE = tz.gettz('America/New_York')
 
+# setup logging
+LOGGER = logging.getLogger(__name__)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(asctime)s [%(levelname)s] %(process)d --- [%(module)s %(filename)s:%(lineno)s] : %(message)s'
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+        },
+        'file': {
+            'level': REGISTRY_LOG_LEVEL,
+            'class': 'logging.FileHandler',
+            'filename': REGISTRY_LOG_FILE_PATH,
+            'formatter': 'verbose',
         },
     },
     'loggers': {
@@ -102,8 +116,8 @@ LOGGING = {
             'propagate': True,
         },
         'pycsw': {
-            'handlers': ['console'],
-            'level': 'ERROR',
+            'handlers': ['console', 'file'],
+            'level': PYCSW_LOG_LEVEL,
             'propagate': True,
         },
         'mapproxy': {
@@ -112,12 +126,13 @@ LOGGING = {
             'propagate': True,
         },
         'registry': {
-            'handlers': ['console'],
-            'level': 'ERROR',
+            'handlers': ['console', 'file'],
+            'level': REGISTRY_LOG_LEVEL,
             'propagate': True,
         },
     },
 }
+
 if not settings.configured:
     settings.configure(**locals())
 
@@ -393,6 +408,7 @@ def create_index(catalog, es=None, version=None):
 
 
 def es_connect(url):
+    LOGGER.debug('Connecting to elasticsearch at {0}'.format(url))
     es = rawes.Elastic(url)
     version = es.get('')['version']['number']
 
@@ -459,24 +475,25 @@ class RegistryRepository(Repository):
 
     def insert(self, *args, **kwargs):
         record = args[0]
+        LOGGER.debug('inserting record {0}'.format(record))
         record.xml = record.xml.decode('utf-8')
         super(RegistryRepository, self).insert(*args)
         if self.es_status != 200:
             return
         if not check_index_exists(self.catalog):
-            print('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
+            LOGGER.warn('Cannot add layer {0}. Catalog {1} does not exist!'.format(record.identifier, self.catalog))
             return
         if not record.wkt_geometry:
-            print('Cannot add layer {0}. Layer without wkt'.format(record.identifier))
+            LOGGER.warn('Cannot add layer {0}. Layer without wkt'.format(record.identifier))
             return
 
         es_dict = record_to_dict(record)
         # TODO: Do not index wrong bounding boxes.
         try:
             self.es[self.catalog]['layer'].post(data=es_dict)
-            print("Record {0} indexed".format(es_dict['title']))
+            LOGGER.debug("Record {0} indexed".format(es_dict['title']))
         except ElasticException as e:
-            print(e)
+            LOGGER.error(e)
 
 
     def delete(self, *args, **kwargs):
@@ -1767,7 +1784,7 @@ def re_index_layers(catalog_slug):
     size, _ = repo.query('')
     # Loop retreiving records from db and send to es.
     for start_position in range(0, int(size), REGISTRY_CSW_MAX_RECORDS):
-        print('Retrieving records from position {0}'.format(start_position))
+        LOGGER.debug('Retrieving records from position {0}'.format(start_position))
         records_list = repo.query('', startposition=start_position, maxrecords=REGISTRY_CSW_MAX_RECORDS)[1]
         data_dict = [json.dumps(record_to_dict(record)) for record in records_list if record.wkt_geometry]
         index_with_bulk(catalog_slug, data_dict)
@@ -1792,6 +1809,7 @@ urlpatterns = [
 if __name__ == '__main__':  # pragma: no cover
     COMMAND = None
     os.environ['DJANGO_SETTINGS_MODULE'] = 'registry'
+    LOGGER.debug('Running registry.py program')
 
     if 'reliability' in sys.argv[:2]:
         es, _ = es_connect(url=REGISTRY_SEARCH_URL)
@@ -1802,7 +1820,7 @@ if __name__ == '__main__':  # pragma: no cover
             layer_dic['reliability_rate'] = compute_reliability(layer_dic['checks_list'])
 
             es.put('{0}/layer/{1}'.format(index_name, layer_id), data=layer_dic)
-            sys.stdout.write('Layer {0} updated with reliablity {1}%\n'.format(uuid, layer_dic['reliability_rate']))
+            LOGGER.debug('Layer {0} updated with reliablity {1}%\n'.format(uuid, layer_dic['reliability_rate']))
 
         sys.exit(0)
 
@@ -1817,7 +1835,7 @@ if __name__ == '__main__':  # pragma: no cover
                                               valid_image,
                                               check_color,
                                               int(time.time()))
-            sys.stdout.write(output)
+            LOGGER.debug(output)
         sys.exit(0)
 
     if 'pycsw' in sys.argv[:2]:
@@ -1847,7 +1865,7 @@ if __name__ == '__main__':  # pragma: no cover
                               'reindex']
 
         if COMMAND not in available_commands:
-            print('pycsw supports only the following commands: %s' % available_commands)
+            LOGGER.error('pycsw supports only the following commands: %s' % available_commands)
             sys.exit(1)
 
         if COMMAND == 'setup_db':
@@ -1859,18 +1877,18 @@ if __name__ == '__main__':  # pragma: no cover
 
         elif COMMAND == 'reindex':
             if not catalog_slug:
-                print('Undefined catalog slug in command line input')
+                LOGGER.error('Undefined catalog slug in command line input')
                 sys.exit(1)
             if not check_index_exists(catalog_slug):
                 create_index(catalog_slug)
             re_index_layers(catalog_slug)
 
         elif COMMAND == 'get_sysprof':
-            print(pycsw_admin.get_sysprof())
+            LOGGER.debug(pycsw_admin.get_sysprof())
 
         elif COMMAND == 'export_records':
             if not xml_dirpath:
-                print('Undefined xml files path in command line input')
+                LOGGER.error('Undefined xml files path in command line input')
                 sys.exit(1)
 
             context = config.StaticContext()
@@ -1884,11 +1902,11 @@ if __name__ == '__main__':  # pragma: no cover
             len_layers = int(repo.query('')[0])
             layers_list = repo.query('', maxrecords=len_layers)[1]
             for layer in layers_list:
-                print(layer.identifier)
+                LOGGER.debug(layer.identifier)
 
         elif COMMAND == 'delete_records':
             if not catalog_slug:
-                print('Undefined catalog slug in command line input')
+                LOGGER.error('Undefined catalog slug in command line input')
                 sys.exit(1)
             delete_records(catalog_slug)
 
