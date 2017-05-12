@@ -21,7 +21,7 @@ __Note:__ This example is for the commercial pivotal cloud foundry using the `se
     ```
 
     ```bash
-    cf push -f cf/pcf_example.yml -c "bash ./cf/init.sh"
+    cf push -f cf/pcf_example.yml -c "bash ./cf/run.sh"
     ```
 
 3. access your app at __${app_name}.cfapps.io__
