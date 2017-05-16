@@ -331,6 +331,19 @@ def include_registry_tags(record_dict, xml_file,
     return record_dict
 
 
+def parse_references(ref_string):
+    # Transform references into a list from pycsw string.
+    ref_list = ref_string.split(",,")[1:]
+
+    # Separate elements into list of list.
+    ref_list = [[data for data in ref.split(',')] for ref in ref_list]
+
+    # Construct list of dictionaries.
+    ref_list = [{'scheme': ref[0], 'url': ref[1].replace('^', '')} for ref in ref_list]
+
+    return ref_list
+
+
 def record_to_dict(record):
     # Encodes record title if it is not empty.
     if record.title:
@@ -381,6 +394,9 @@ def record_to_dict(record):
         record_dict['legend_url'] = '/layer/%s/service?' % record.identifier + urlencode(legend_opts)
 
     record_dict = include_registry_tags(record_dict, record.xml)
+
+    if record.links:
+        record_dict['references'] = parse_references(record.links)
 
     return record_dict
 
