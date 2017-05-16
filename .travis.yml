@@ -2,7 +2,7 @@ language: python
 
 cache: pip
 sudo: required
-dist: xenial
+dist: trusty
 
 python:
   - "2.7"

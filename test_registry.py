@@ -39,6 +39,8 @@ layers_list = [
         'i': 0,
         'source': 'None',
         'type': 'ESRI:ArcGIS:ImageServer',
+        'references_scheme': 'WWW:LINK',
+        'references_url': 'http://some_url.com/rest/services/some_service/some_layer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -54,6 +56,8 @@ layers_list = [
         'source': 'http://maps.nypl.org/warper/maps/wms/8198?',
         'i': 1,
         'type': 'dataset',
+        'references_scheme': 'WWW:LINK',
+        'references_url': 'http://some_url2.com/rest/services/some_service/some_layer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -68,7 +72,9 @@ layers_list = [
         'registry_tag': 'vehicula',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
-        'source': 'None',        
+        'source': 'None',
+        'references_scheme': 'OGC:WMS',
+        'references_url': 'http://some_wms_service/wms/2',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -155,6 +161,12 @@ def get_xml_block(dictionary):
          dictionary['source'],
          dictionary['identifier'],
          dictionary['registry_tag'])
+
+    if 'references_scheme' in dictionary.keys():
+        references_string = (
+            '    <dct:references scheme="%s">%s</dct:references>') % (dictionary['references_scheme'],
+                                                                      dictionary['references_url'])
+        xml_block += references_string
 
     if 'lower_corner_1' in dictionary.keys():
         bbox_string = (
