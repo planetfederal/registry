@@ -56,6 +56,16 @@ paths:
           description: Constrains docs by keyword search query.
           type: string
         -
+          name: q.references.url
+          in: query
+          description: Constrains docs by reference url search query.
+          type: string
+        -
+          name: q.references.scheme
+          in: query
+          description: Constrains docs by reference scheme search query.
+          type: string
+        -
           name: q.user
           in: query
           description: Constrains docs by matching exactly a certain user
