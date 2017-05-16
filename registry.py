@@ -442,6 +442,13 @@ def es_mapping(version):
                             "category": {"type": "string", "index": "not_analyzed"}
                         }
                     },
+                    "references": {
+                        "type": "nested",
+                        "properties": {
+                            "url": {"type": "string", "index": "not_analyzed"},
+                            "scheme": {"type": "string", "index": "not_analyzed"}
+                        }
+                    },
                     "layer_geoshape": {
                         "type": "geo_shape",
                         "tree": "quadtree",
@@ -746,6 +753,14 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Constrains docs by keyword search query."
     )
+    q_references_url = serializers.CharField(
+        required=False,
+        help_text="Constrains docs by reference url search query."
+    )
+    q_references_scheme = serializers.CharField(
+        required=False,
+        help_text="Constrains docs by reference scheme search query."
+    )
     q_registry_text = serializers.CharField(
         required=False,
         help_text="Registry keyword search query"
@@ -871,6 +886,20 @@ class SearchSerializer(serializers.Serializer):
         return value
 
 
+def create_nested_json(json_path, json_query, json_field):
+    return {
+        "nested": {
+            "path": json_path,
+            "query": {
+                "multi_match": {
+                    "query": json_query,
+                    "fields": [json_field]
+                }
+            }
+        }
+    }
+
+
 def elasticsearch(serializer, catalog):
     """
     https://www.elastic.co/guide/en/elasticsearch/reference/current/_the_search_api.html
@@ -896,6 +925,8 @@ def elasticsearch(serializer, catalog):
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
     q_uuid = serializer.validated_data.get("q_uuid")
+    q_references_url = serializer.validated_data.get("q_references_url")
+    q_references_scheme = serializer.validated_data.get("q_references_scheme")
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
@@ -926,19 +957,16 @@ def elasticsearch(serializer, catalog):
             must_array.append(text_search_dic)
 
     if q_registry_text:
-        registry_filter = {
-            "nested": {
-                "path": "registry",
-                "query": {
-                    "multi_match": {
-                        "query": q_registry_text,
-                        "fields": ["registry.*"]
-                    }
-                }
-            }
-        }
+        json_path, json_query, json_field, = "registry", q_registry_text, "registry.*"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
 
-        must_array.append(registry_filter)
+    if q_references_url:
+        json_path, json_query, json_field, = "references", q_references_url, "references.url"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
+
+    if q_references_scheme:
+        json_path, json_query, json_field, = "references", q_references_scheme, "references.scheme"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
 
     if q_uuid:
         # Using q_user

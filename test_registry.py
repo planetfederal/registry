@@ -430,12 +430,36 @@ def test_search_api(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) - 1 == results['a.matchDocs']
 
-    # Saarch only in registry subfield.
+    # Search only in registry subfield.
+    params = default_params.copy()
     params['q_registry_text'] = 'vehicula'
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
+
+    # Get documents using an specific reference url.
+    params = default_params.copy()
+    params['q_references_url'] = 'http://some_url.com/rest/services/some_service/some_layer'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    # Get documents using an specific schema url.
+    params = default_params.copy()
+    params['q_references_scheme'] = 'WWW:LINK'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
+
+    # Get documents with both scheme and url references.
+    params['q_references_url'] = 'http://some_url.com/rest/services/some_service/some_layer'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
 
     params = default_params.copy()
     params['a_categories_limit'] = 10
