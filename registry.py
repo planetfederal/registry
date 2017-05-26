@@ -61,8 +61,8 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_MAPPING_DIST_ERR_PCT = os.getenv('REGISTRY_MAPPING_DIST_ERR_PCT', 0.025)
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
-REGISTRY_SEARCH_USERNAME = os.getenv('REGISTRY_SEARCH_USERNAME', 'elastic')
-REGISTRY_SEARCH_PASSWORD = os.getenv('REGISTRY_SEARCH_PASSWORD', 'changeme')
+REGISTRY_SEARCH_USERNAME = os.getenv('REGISTRY_SEARCH_USERNAME')
+REGISTRY_SEARCH_PASSWORD = os.getenv('REGISTRY_SEARCH_PASSWORD')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 REGISTRY_MAXRECORDS_PER_NETLOC = int(os.getenv('REGISTRY_MAXRECORDS_PER_NETLOC', '3600'))
 REGISTRY_CSW_MAX_RECORDS = int(os.getenv('REGISTRY_CSW_MAX_RECORDS', '1000'))
@@ -427,7 +427,10 @@ def create_index(catalog, es=None, version=None):
 
 def es_connect(url):
     LOGGER.debug('Connecting to elasticsearch at {0}'.format(url))
-    es = rawes.Elastic(url, auth=(REGISTRY_SEARCH_USERNAME, REGISTRY_SEARCH_PASSWORD))
+    if REGISTRY_SEARCH_USERNAME is not None and REGISTRY_SEARCH_PASSWORD is not None:
+        es = rawes.Elastic(url, auth=(REGISTRY_SEARCH_USERNAME, REGISTRY_SEARCH_PASSWORD))
+    else:
+        es = rawes.Elastic(url)
     version = es.get('')['version']['number']
 
     return es, version
