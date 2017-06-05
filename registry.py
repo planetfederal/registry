@@ -27,6 +27,8 @@ from django.views.decorators.csrf import csrf_exempt
 
 from io import BytesIO
 
+from markdown2 import markdown_path
+
 from pycsw import server
 from pycsw.core import config, metadata
 from pycsw.core import admin as pycsw_admin
@@ -70,7 +72,6 @@ REGISTRY_LOG_FILE_PATH = os.getenv('REGISTRY_LOG_FILE_PATH', '/tmp/registry.log'
 REGISTRY_LOG_LEVEL = os.getenv('REGISTRY_LOG_LEVEL', 'DEBUG')
 PYCSW_LOG_LEVEL = os.getenv('PYCSW_LOG_LEVEL', 'DEBUG')
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
-
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 
 
@@ -1654,12 +1655,12 @@ def list_catalogs_view(request):
 
 
 def readme_view(request):
-    with open('documentation.md') as f:
-        readme = f.readlines()
+    readme = markdown_path('documentation.md').replace(
+        'http://localhost:8000/',
+        request.build_absolute_uri()
+    )
 
-    del(readme[3:5], readme[8])
-
-    response = HttpResponse(''.join(readme), status=200, content_type='text/plain')
+    response = HttpResponse(''.join(readme), status=200, content_type='text/html')
 
     return response
 
