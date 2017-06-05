@@ -1,7 +1,7 @@
 # both required for cloudfoundry
 --extra-index-url https://pypi.python.org/simple
 --extra-index-url https://testpypi.python.org/pypi
-
+ 
 # pycsw
 pycsw==2.1.dev20161019
 SQLAlchemy==1.1.2
@@ -12,7 +12,7 @@ django==1.9
 
 # registry
 rawes==0.5.5
-MapProxy==1.10.0a0.dev20160928
+MapProxy==1.10
 
 # Search API
 djangorestframework==3.3.3

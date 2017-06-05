@@ -24,7 +24,7 @@ setup(
     author_email='ingenieroariel@gmail.com',
     description='registry',
     long_description=open('README.md').read() + '\n\n' + open('CHANGELOG.md').read(),
-    tests_require=['pytest-django>=3.0,<3.1', 'pytest>=3.0,<3.1', 'coveralls', 'flake8'],
+    tests_require=['pytest-django', 'pytest', 'coveralls', 'flake8'],
     cmdclass={'test': PyTest},
     py_modules=['registry'],
     classifiers=[

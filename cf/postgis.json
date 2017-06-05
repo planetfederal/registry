@@ -1,0 +1,8 @@
+{
+   "db_username": "registry",
+   "db_name": "registry",
+   "postgis": true,
+   "db_encoding": "UTF-8",
+   "owner_email": "registry@boundlessgeo.com",
+   "owner_name": "boundless"
+}

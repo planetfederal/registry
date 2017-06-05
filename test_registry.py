@@ -39,6 +39,8 @@ layers_list = [
         'i': 0,
         'source': 'None',
         'type': 'ESRI:ArcGIS:ImageServer',
+        'references_scheme': 'WWW:LINK',
+        'references_url': 'http://some_url.com/rest/services/some_service/some_layer',
         'modified': datetime(2000, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -54,6 +56,8 @@ layers_list = [
         'source': 'http://maps.nypl.org/warper/maps/wms/8198?',
         'i': 1,
         'type': 'dataset',
+        'references_scheme': 'WWW:LINK',
+        'references_url': 'http://some_url2.com/rest/services/some_service/some_layer',
         'modified': datetime(2001, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -68,7 +72,9 @@ layers_list = [
         'registry_tag': 'vehicula',
         'i': 2,
         'type': 'ESRI:ArcGIS:MapServer',
-        'source': 'None',        
+        'source': 'None',
+        'references_scheme': 'OGC:WMS',
+        'references_url': 'http://some_wms_service/wms/2',
         'modified': datetime(2002, 3, 1, 0, 0, 0, tzinfo=registry.TIMEZONE)
     },
     {
@@ -155,6 +161,12 @@ def get_xml_block(dictionary):
          dictionary['source'],
          dictionary['identifier'],
          dictionary['registry_tag'])
+
+    if 'references_scheme' in dictionary.keys():
+        references_string = (
+            '    <dct:references scheme="%s">%s</dct:references>') % (dictionary['references_scheme'],
+                                                                      dictionary['references_url'])
+        xml_block += references_string
 
     if 'lower_corner_1' in dictionary.keys():
         bbox_string = (
@@ -418,12 +430,36 @@ def test_search_api(client):
     results = json.loads(response.content.decode('utf-8'))
     assert len(layers_list) - 1 == results['a.matchDocs']
 
-    # Saarch only in registry subfield.
+    # Search only in registry subfield.
+    params = default_params.copy()
     params['q_registry_text'] = 'vehicula'
     response = client.get(catalog_search_api, params)
     assert 200 == response.status_code
     results = json.loads(response.content.decode('utf-8'))
     assert 2 == results['a.matchDocs']
+
+    # Get documents using an specific reference url.
+    params = default_params.copy()
+    params['q_references_url'] = 'http://some_url.com/rest/services/some_service/some_layer'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
+
+    # Get documents using an specific schema url.
+    params = default_params.copy()
+    params['q_references_scheme'] = 'WWW:LINK'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 2 == results['a.matchDocs']
+
+    # Get documents with both scheme and url references.
+    params['q_references_url'] = 'http://some_url.com/rest/services/some_service/some_layer'
+    response = client.get(catalog_search_api, params)
+    assert 200 == response.status_code
+    results = json.loads(response.content.decode('utf-8'))
+    assert 1 == results['a.matchDocs']
 
     params = default_params.copy()
     params['a_categories_limit'] = 10

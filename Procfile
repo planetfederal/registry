@@ -1,1 +1,0 @@
-web: cf/run.sh

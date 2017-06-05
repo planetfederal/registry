@@ -61,6 +61,8 @@ SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secre
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_MAPPING_DIST_ERR_PCT = os.getenv('REGISTRY_MAPPING_DIST_ERR_PCT', 0.025)
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
+REGISTRY_SEARCH_USERNAME = os.getenv('REGISTRY_SEARCH_USERNAME')
+REGISTRY_SEARCH_PASSWORD = os.getenv('REGISTRY_SEARCH_PASSWORD')
 REGISTRY_DATABASE_URL = os.getenv('REGISTRY_DATABASE_URL', 'sqlite:////tmp/registry.db')
 REGISTRY_MAXRECORDS_PER_NETLOC = int(os.getenv('REGISTRY_MAXRECORDS_PER_NETLOC', '3600'))
 REGISTRY_CSW_MAX_RECORDS = int(os.getenv('REGISTRY_CSW_MAX_RECORDS', '1000'))
@@ -72,16 +74,38 @@ MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 
 
-def vcaps_search_url(VCAP_SERVICES, registry_url):
-    """Extract registry_url from VCAP_SERVICES dict
+def vcaps_search_url(VCAP_SERVICES, search_url):
+    """Extract 'search_url' from user-provided key in VCAP_SERVICES dict
     """
     if VCAP_SERVICES:
         vcap_config = json.loads(VCAP_SERVICES)
         if 'searchly' in vcap_config:
-            registry_url = vcap_config['searchly'][0]['credentials']['sslUri']
+            search_url = vcap_config['searchly'][0]['credentials']['sslUri']
+        try:
+            search_url = vcap_config['user-provided'][0]['credentials']['search_url']
+        except KeyError:
+            pass
 
-    return registry_url
+    return search_url
 
+
+def vcaps_db_url(VCAP_SERVICES, database_url):
+    """Extract database_url from VCAP_SERVICES dict
+    """
+    if VCAP_SERVICES:
+        vcap_config = json.loads(VCAP_SERVICES)
+        if 'pg_95_SM_DEV_CODE-A-THON_001' in vcap_config:
+            database_url = vcap_config['pg_95_SM_DEV_CODE-A-THON_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_DEV_SHARED_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_DEV_SHARED_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_DEV_CONTENT_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_DEV_CONTENT_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_PROD_CONTENT_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_PROD_CONTENT_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_PROD_SHARED_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_PROD_SHARED_001'][0]['credentials']['uri']
+
+    return database_url
 
 # Override REGISTRY_SEARCH_URL if VCAP_SERVICES is defined.
 REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
@@ -331,6 +355,19 @@ def include_registry_tags(record_dict, xml_file,
     return record_dict
 
 
+def parse_references(ref_string):
+    # Transform references into a list from pycsw string.
+    ref_list = ref_string.split(",,")[1:]
+
+    # Separate elements into list of list.
+    ref_list = [[data for data in ref.split(',')] for ref in ref_list]
+
+    # Construct list of dictionaries.
+    ref_list = [{'scheme': ref[0], 'url': ref[1].replace('^', '')} for ref in ref_list]
+
+    return ref_list
+
+
 def record_to_dict(record):
     # Encodes record title if it is not empty.
     if record.title:
@@ -382,6 +419,9 @@ def record_to_dict(record):
 
     record_dict = include_registry_tags(record_dict, record.xml)
 
+    if record.links:
+        record_dict['references'] = parse_references(record.links)
+
     return record_dict
 
 
@@ -409,7 +449,10 @@ def create_index(catalog, es=None, version=None):
 
 def es_connect(url):
     LOGGER.debug('Connecting to elasticsearch at {0}'.format(url))
-    es = rawes.Elastic(url)
+    if REGISTRY_SEARCH_USERNAME is not None and REGISTRY_SEARCH_PASSWORD is not None:
+        es = rawes.Elastic(url, auth=(REGISTRY_SEARCH_USERNAME, REGISTRY_SEARCH_PASSWORD))
+    else:
+        es = rawes.Elastic(url)
     version = es.get('')['version']['number']
 
     return es, version
@@ -424,6 +467,13 @@ def es_mapping(version):
                         "type": "nested",
                         "properties": {
                             "category": {"type": "string", "index": "not_analyzed"}
+                        }
+                    },
+                    "references": {
+                        "type": "nested",
+                        "properties": {
+                            "url": {"type": "string", "index": "not_analyzed"},
+                            "scheme": {"type": "string", "index": "not_analyzed"}
                         }
                     },
                     "layer_geoshape": {
@@ -730,6 +780,14 @@ class SearchSerializer(serializers.Serializer):
         required=False,
         help_text="Constrains docs by keyword search query."
     )
+    q_references_url = serializers.CharField(
+        required=False,
+        help_text="Constrains docs by reference url search query."
+    )
+    q_references_scheme = serializers.CharField(
+        required=False,
+        help_text="Constrains docs by reference scheme search query."
+    )
     q_registry_text = serializers.CharField(
         required=False,
         help_text="Registry keyword search query"
@@ -855,6 +913,20 @@ class SearchSerializer(serializers.Serializer):
         return value
 
 
+def create_nested_json(json_path, json_query, json_field):
+    return {
+        "nested": {
+            "path": json_path,
+            "query": {
+                "multi_match": {
+                    "query": json_query,
+                    "fields": [json_field]
+                }
+            }
+        }
+    }
+
+
 def elasticsearch(serializer, catalog):
     """
     https://www.elastic.co/guide/en/elasticsearch/reference/current/_the_search_api.html
@@ -880,6 +952,8 @@ def elasticsearch(serializer, catalog):
     q_geo = serializer.validated_data.get("q_geo")
     q_user = serializer.validated_data.get("q_user")
     q_uuid = serializer.validated_data.get("q_uuid")
+    q_references_url = serializer.validated_data.get("q_references_url")
+    q_references_scheme = serializer.validated_data.get("q_references_scheme")
     d_docs_sort = serializer.validated_data.get("d_docs_sort")
     d_docs_limit = int(serializer.validated_data.get("d_docs_limit"))
     d_docs_page = int(serializer.validated_data.get("d_docs_page"))
@@ -910,19 +984,16 @@ def elasticsearch(serializer, catalog):
             must_array.append(text_search_dic)
 
     if q_registry_text:
-        registry_filter = {
-            "nested": {
-                "path": "registry",
-                "query": {
-                    "multi_match": {
-                        "query": q_registry_text,
-                        "fields": ["registry.*"]
-                    }
-                }
-            }
-        }
+        json_path, json_query, json_field, = "registry", q_registry_text, "registry.*"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
 
-        must_array.append(registry_filter)
+    if q_references_url:
+        json_path, json_query, json_field, = "references", q_references_url, "references.url"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
+
+    if q_references_scheme:
+        json_path, json_query, json_field, = "references", q_references_scheme, "references.scheme"
+        must_array.append(create_nested_json(json_path, json_query, json_field))
 
     if q_uuid:
         # Using q_user
