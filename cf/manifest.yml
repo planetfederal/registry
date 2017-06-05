@@ -1,0 +1,14 @@
+---
+applications:
+  - name: registry-api
+    command: sh -c cf/run.sh
+    buildpack: https://github.com/BerryDaniel/python-buildpack#v1.5.12_vendor
+    memory: 1G
+    instances: 1
+    disk_quota: 1G
+    env:
+      SECRET_KEY: 'changeme-l#971l^6qf3wfg$pgx_6ly52f!79d-^!hie406zrgp6vm0jh3o-registry'
+      REGISTRY_DEBUG: 'False'
+    services:
+      - registry-db
+      - api-search

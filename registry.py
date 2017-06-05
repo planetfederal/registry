@@ -74,16 +74,38 @@ MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 
 
-def vcaps_search_url(VCAP_SERVICES, registry_url):
-    """Extract registry_url from VCAP_SERVICES dict
+def vcaps_search_url(VCAP_SERVICES, search_url):
+    """Extract 'search_url' from user-provided key in VCAP_SERVICES dict
     """
     if VCAP_SERVICES:
         vcap_config = json.loads(VCAP_SERVICES)
         if 'searchly' in vcap_config:
-            registry_url = vcap_config['searchly'][0]['credentials']['sslUri']
+            search_url = vcap_config['searchly'][0]['credentials']['sslUri']
+        try:
+            search_url = vcap_config['user-provided'][0]['credentials']['search_url']
+        except KeyError:
+            pass
 
-    return registry_url
+    return search_url
 
+
+def vcaps_db_url(VCAP_SERVICES, database_url):
+    """Extract database_url from VCAP_SERVICES dict
+    """
+    if VCAP_SERVICES:
+        vcap_config = json.loads(VCAP_SERVICES)
+        if 'pg_95_SM_DEV_CODE-A-THON_001' in vcap_config:
+            database_url = vcap_config['pg_95_SM_DEV_CODE-A-THON_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_DEV_SHARED_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_DEV_SHARED_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_DEV_CONTENT_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_DEV_CONTENT_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_PROD_CONTENT_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_PROD_CONTENT_001'][0]['credentials']['uri']
+        elif 'pg_95_XL_PROD_SHARED_001' in vcap_config:
+            database_url = vcap_config['pg_95_XL_PROD_SHARED_001'][0]['credentials']['uri']
+
+    return database_url
 
 # Override REGISTRY_SEARCH_URL if VCAP_SERVICES is defined.
 REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
