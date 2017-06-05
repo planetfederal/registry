@@ -7,6 +7,22 @@ Note: Examples are for L2 PaaS version of PCF
 
 + database (registry-db or what matches in your manifest.yml)
 
+2. push your app to cloudfoundry
+
+    __Note:__ Adjust the yaml file as needed.
+
+    ```yaml
+    applications:
+    - name: changeme
+    services:
+        - changeme
+    ```
+
+    ```bash
+    cf push -f cf/pcf_example.yml -c "bash ./cf/run.sh"
+    ```
+
+3. access your app at __${app_name}.cfapps.io__
   ```bash
      if ! cf s | grep 'registry-db'; then
        cf cs pg_95_XL_DEV_SHARED_001 large-dev-100 registry-db -c cf/postgis.json;
