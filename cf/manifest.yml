@@ -2,7 +2,7 @@
 applications:
   - name: registry-api
     command: sh -c cf/run.sh
-    buildpack: https://github.com/BerryDaniel/python-buildpack#v1.5.12_vendor
+    buildpack: https://github.com/BerryDaniel/python-buildpack#v1.5.13_vendor
     memory: 1G
     instances: 1
     disk_quota: 1G

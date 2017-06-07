@@ -108,8 +108,9 @@ def vcaps_db_url(VCAP_SERVICES, database_url):
 
     return database_url
 
-# Override REGISTRY_SEARCH_URL if VCAP_SERVICES is defined.
+# Override DATABASE_URL and SEARCH_URL if VCAP_SERVICES is defined.
 REGISTRY_SEARCH_URL = vcaps_search_url(VCAP_SERVICES, REGISTRY_SEARCH_URL)
+REGISTRY_DATABASE_URL = vcaps_db_url(VCAP_SERVICES, REGISTRY_DATABASE_URL)
 
 TIMEZONE = tz.gettz('America/New_York')
 
