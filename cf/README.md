@@ -1,4 +1,4 @@
-# Cloud Foundry Registry App
+# Cloud Foundry Registry Deployment
 
 In order to deploy registry to Cloud Foundry you will need to first create
 the required services.
