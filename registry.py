@@ -468,7 +468,7 @@ def es_mapping(version):
                     "registry": {
                         "type": "nested",
                         "properties": {
-                            "category": {"type": "string", "index": "not_analyzed"}
+                            "category": {"type": "string"}
                         }
                     },
                     "references": {
