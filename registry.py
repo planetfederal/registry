@@ -73,6 +73,14 @@ REGISTRY_LOG_LEVEL = os.getenv('REGISTRY_LOG_LEVEL', 'DEBUG')
 PYCSW_LOG_LEVEL = os.getenv('PYCSW_LOG_LEVEL', 'DEBUG')
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
+REGISTRY_MAPPINGS_OVERRIDES_FILE = os.environ.get('REGISTRY_MAPPINGS_OVERRIDES_FILE', None)
+REGISTRY_MAPPINGS_OVERRIDES = {}
+if REGISTRY_MAPPINGS_OVERRIDES_FILE is not None:
+    try:
+        with open(REGISTRY_MAPPINGS_OVERRIDES_FILE) as f:
+            REGISTRY_MAPPINGS_OVERRIDES = json.load(f)
+    except:
+        pass
 
 
 def vcaps_search_url(VCAP_SERVICES, search_url):
@@ -461,14 +469,17 @@ def es_connect(url):
 
 
 def es_mapping(version):
-    return {
+    mappings = {
         "mappings": {
             "layer": {
                 "properties": {
                     "registry": {
                         "type": "nested",
                         "properties": {
-                            "category": {"type": "string", "index": "not_analyzed"}
+                            "category": {
+                                "type": "string", 
+                                "index": "not_analyzed"
+                            }
                         }
                     },
                     "references": {
@@ -492,6 +503,8 @@ def es_mapping(version):
             }
         }
     }
+    mappings.update(REGISTRY_MAPPINGS_OVERRIDES)
+    return mappings
 
 
 def text_field(version, **kwargs):
