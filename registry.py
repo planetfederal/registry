@@ -50,6 +50,8 @@ from six.moves.urllib_parse import urlparse, unquote as url_unquote, urlencode
 
 from rawes.elastic_exception import ElasticException
 
+from urlparse import urlparse
+
 netlocs_dic = {}
 
 __version__ = 0.2
@@ -386,6 +388,9 @@ def record_to_dict(record):
     bbox = wkt2geom(record.wkt_geometry)
     min_x, min_y, max_x, max_y = bbox[0], bbox[1], bbox[2], bbox[3]
 
+    source_parsed = urlparse(record.source)
+    source_host = '%s://%s' % (source_parsed.scheme, source_parsed.netloc)
+
     record_dict = {
         'title': record.title,
         'abstract': record.abstract,
@@ -397,6 +402,7 @@ def record_to_dict(record):
         'max_x': max_x,
         'max_y': max_y,
         'source': record.source,
+        'source_host': source_host,
         'source_type': record.type,
         'tile_url': '/layer/%s/wmts/%s/default_grid/{z}/{x}/{y}.png' % (record.identifier, record.title_alternate),
         'layer_date': record.date_modified,
