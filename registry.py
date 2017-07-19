@@ -432,6 +432,9 @@ def record_to_dict(record):
     if record.links:
         record_dict['references'] = parse_references(record.links)
 
+    if record.source:
+        record_dict['source_host'] = urlparse(record.source).netloc
+
     return record_dict
 
 
