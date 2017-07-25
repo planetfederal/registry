@@ -506,7 +506,16 @@ def es_mapping(version):
             }
         }
     }
-    mappings.update(REGISTRY_MAPPINGS_OVERRIDES)
+
+    mapping_overrides = REGISTRY_MAPPINGS_OVERRIDES
+    try:
+        override_keys = mapping_overrides['mappings']['layer']['properties'].keys()
+    except:
+        override_keys = []
+
+    for key in override_keys:
+        mappings['mappings']['layer']['properties'][key] = mapping_overrides['mappings']['layer']['properties'][key]
+
     return mappings
 
 
