@@ -434,6 +434,15 @@ def record_to_dict(record):
 
     if record.source:
         record_dict['source_host'] = urlparse(record.source).netloc
+        
+    if record.classification:
+        record_dict['classification'] = record.classification
+        
+    if record.conditionapplyingtoaccessanduse:
+        record_dict['conditionapplyingtoaccessanduse'] = record.conditionapplyingtoaccessanduse
+        
+    if record.keywords:
+        record_dict['keywords'] = record.keywords
 
     return record_dict
 
