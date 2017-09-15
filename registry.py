@@ -59,7 +59,8 @@ DEBUG = strtobool(os.getenv('REGISTRY_DEBUG', 'True'))
 ROOT_URLCONF = 'registry'
 DATABASES = {'default': {}}  # required regardless of actual usage
 SECRET_KEY = os.getenv('REGISTRY_SECRET_KEY', 'Make sure you create a good secret key.')
-
+REGISTRY_SERVER_URL = os.getenv('REGISTRY_SERVER_URL', 'http://127.0.0.1')
+REGISTRY_PROVIDER_URL = os.getenv('REGISTRY_PROVIDER_URL', 'http://127.0.0.1')
 REGISTRY_MAPPING_PRECISION = os.getenv('REGISTRY_MAPPING_PRECISION', '500m')
 REGISTRY_MAPPING_DIST_ERR_PCT = os.getenv('REGISTRY_MAPPING_DIST_ERR_PCT', 0.025)
 REGISTRY_SEARCH_URL = os.getenv('REGISTRY_SEARCH_URL', 'http://127.0.0.1:9200')
@@ -305,10 +306,8 @@ def csw_view(request, catalog=None):
     env.update({'local.app_root': os.path.dirname(__file__),
                 'REQUEST_URI': request.build_absolute_uri()})
 
-    # pycsw prefers absolute urls, let's get them from the request.
-    url = request.build_absolute_uri()
-    PYCSW['server']['url'] = url
-    PYCSW['metadata:main']['provider_url'] = url
+    PYCSW['server']['url'] = REGISTRY_SERVER_URL
+    PYCSW['metadata:main']['provider_url'] = REGISTRY_PROVIDER_URL
 
     # Enable CSW-T when a catalog is defined in the
     if catalog:
