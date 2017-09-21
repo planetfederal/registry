@@ -306,7 +306,7 @@ def csw_view(request, catalog=None):
                 'REQUEST_URI': request.build_absolute_uri()})
 
     # pycsw prefers absolute urls, let's get them from the request.
-    url = request.build_absolute_uri()
+    url = request.build_absolute_uri().split('?')[0]
     PYCSW['server']['url'] = url
     PYCSW['metadata:main']['provider_url'] = url
 
