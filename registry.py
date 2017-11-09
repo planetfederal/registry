@@ -72,6 +72,10 @@ REGISTRY_LOG_FILE_PATH = os.getenv('REGISTRY_LOG_FILE_PATH', '/tmp/registry.log'
 REGISTRY_LOG_LEVEL = os.getenv('REGISTRY_LOG_LEVEL', 'DEBUG')
 PYCSW_LOG_LEVEL = os.getenv('PYCSW_LOG_LEVEL', 'DEBUG')
 MAPPROXY_CACHE_DIR = os.getenv('MAPPROXY_CACHE_DIR', '/tmp')
+# If MAPPROXY_ERROR_IMAGES is True, wms requests with source errors will return
+# an image with the errors printed within it and a 200 status code. Otherwise,
+# an xml exception and 500 status code will be returned.
+MAPPROXY_ERROR_IMAGES = strtobool(os.getenv('MAPPROXY_ERROR_IMAGES', 'False'))
 VCAP_SERVICES = os.environ.get('VCAP_SERVICES', None)
 REGISTRY_MAPPINGS_OVERRIDES_FILE = os.environ.get('REGISTRY_MAPPINGS_OVERRIDES_FILE', None)
 REGISTRY_MAPPINGS_OVERRIDES = {}
@@ -480,7 +484,7 @@ def es_mapping(version):
                         "type": "nested",
                         "properties": {
                             "category": {
-                                "type": "string", 
+                                "type": "string",
                                 "index": "not_analyzed"
                             }
                         }
@@ -1430,6 +1434,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'srs': ['EPSG:4326', 'EPSG:3857'],
             'srs_bbox': 'EPSG:4326',
             'bbox': bbox,
+            'on_source_errors': 'raise',
             'versions': ['1.1.1']
         },
         'wmts': {
@@ -1589,10 +1594,14 @@ def get_mapproxy_png(yaml_text, mp):
     captured = []
     output = []
     bbox_req, lay_name = get_path_info_params(yaml_text)
+    if MAPPROXY_ERROR_IMAGES:
+        exceptions = 'application%2Fvnd.ogc.se_inimage'
+    else:
+        exceptions = 'application%2Fvnd.ogc.se_xml'
 
     path_info = ('/service?LAYERS={0}&FORMAT=image%2Fpng&SRS=EPSG%3A4326'
-                 '&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&TRANSPARENT=TRUE&SERVICE=WMS&VERSION=1.1.1&'
-                 'REQUEST=GetMap&STYLES=&BBOX={1}&WIDTH=200&HEIGHT=150').format(lay_name, bbox_req)
+                 '&EXCEPTIONS={1}&TRANSPARENT=TRUE&SERVICE=WMS&VERSION=1.1.1&'
+                 'REQUEST=GetMap&STYLES=&BBOX={2}&WIDTH=200&HEIGHT=150').format(lay_name, exceptions, bbox_req)
 
     def start_response(status, headers, exc_info=None):
         captured[:] = [status, headers, exc_info]
@@ -1616,7 +1625,11 @@ def layer_png_view(request, layer_uuid):
 
     app_iter = get_mapproxy_png(yaml_text, mp)
 
-    return HttpResponse(next(app_iter), content_type='image/png')
+    response_content = next(app_iter)
+    if 'ServiceException' in str(response_content):
+        return HttpResponse(response_content, content_type='application/xml', status=500)
+
+    return HttpResponse(response_content, content_type='image/png')
 
 
 def layer_mapproxy(request, layer_uuid, path_info):

@@ -17,6 +17,8 @@ from pycsw.core.etree import etree
 catalog_slug = 'test'
 catalog_search_api = '/catalog/{0}/api/'.format(catalog_slug)
 
+registry.MAPPROXY_ERROR_IMAGES = True
+
 default_params = {
     "q_time": "[* TO *]",
     "q_geo": "[-90,-180 TO 90,180]",
@@ -807,6 +809,14 @@ def test_mapproxy(client):
     response = client.get(mapproxy_url)
     assert 200 == response.status_code
     assert 'image/png' in response.serialize_headers().decode('utf-8')
+
+    # test xml exception response in the case of a source error
+    registry.MAPPROXY_ERROR_IMAGES = False
+    mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170.png'
+    response = client.get(mapproxy_url)
+    assert 500 == response.status_code
+    assert 'application/xml' in response.serialize_headers().decode('utf-8')
+    registry.MAPPROXY_ERROR_IMAGES = True
 
     # test the JSON view of the layer
     mapproxy_url = '/layer/f28ad41b-b91f-4d5d-a7c3-4b17dfaa5170.js'
