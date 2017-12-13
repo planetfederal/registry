@@ -1321,14 +1321,14 @@ LAYER_SRS_FOR_TYPE = {
     'Hypermap:WARPER': 'EPSG:90013',
     'ESRI:ArcGIS:MapServer': 'EPSG:3857',
     'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
-    'OGC:WMS': 'EPGS:4326'
+    'OGC:WMS': 'EPSG:4326'
 }
 
 GRID_SRS_FOR_TYPE = {
     'Hypermap:WARPER': 'EPSG:90013',
     'ESRI:ArcGIS:MapServer': 'EPSG:3857',
     'ESRI:ArcGIS:ImageServer': 'EPSG:3857',
-    'OGC:WMS': 'EPGS:3857'
+    'OGC:WMS': 'EPSG:3857'
 }
 
 
