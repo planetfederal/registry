@@ -1371,6 +1371,7 @@ def get_mapproxy(layer, seed=False, ignore_warnings=True, renderd=False, config_
             'transparent': True,
         },
         'wms_opts': {
+            'featureinfo': True,
             'legendgraphic': True
         }
     }
