@@ -24,7 +24,7 @@ from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import Elasticsearch, NotFoundError, RequestError, helpers
 
 from io import BytesIO
 
@@ -457,7 +457,7 @@ def create_index(catalog, es=None, version=None):
         es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     mapping = es_mapping(version)
-    es.indices.create(index=catalog, body=mapping, ignore=400)
+    es.indices.create(index=catalog, body=mapping)
 
     return 'Catalog {0} created succesfully'.format(catalog)
 
@@ -1211,8 +1211,8 @@ def elasticsearch(serializer, catalog):
     if aggs_dic:
         dic_query['aggs'] = aggs_dic
     try:
-        es_response = es.post(search_engine_endpoint, data=dic_query)
-    except ElasticException as e:
+        es_response = es.search(index=catalog, body=dic_query)
+    except RequestError as e:
         return e.status_code, {"error": {"msg": str(e.args)}}
     if original_response:
         return es_response
@@ -1891,8 +1891,18 @@ def api_config_view(request):
 
 def index_with_bulk(catalog_slug, data_dict):
     es, _ = es_connect(url=REGISTRY_SEARCH_URL)
-    bulk_body = '{"index":{}}\n' + '\n{"index":{}}\n'.join(data_dict) + '\n{"index":{}}'
-    es.bulk(index=catalog_slug, body=bulk_body)
+    bulk_body = []
+
+    for r in data_dict:
+        bulk_body.append(
+            {
+               "_index": catalog_slug,
+               "_type": "layer",
+               "_source": r
+            }
+        )
+
+    helpers.bulk(es, bulk_body)
 
 
 def re_index_layers(catalog_slug):
