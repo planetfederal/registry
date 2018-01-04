@@ -4,7 +4,6 @@ import isodate
 import json
 import os
 import PIL.Image
-import rawes
 import re
 import requests
 import sys
@@ -24,6 +23,8 @@ from django.conf.urls import url
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+
+from elasticsearch import Elasticsearch, NotFoundError
 
 from io import BytesIO
 
@@ -47,8 +48,6 @@ from mapproxy.wsgiapp import MapProxyApp
 from shapely.geometry import box
 
 from six.moves.urllib_parse import urlparse, unquote as url_unquote, urlencode
-
-from rawes.elastic_exception import ElasticException
 
 netlocs_dic = {}
 
@@ -347,9 +346,9 @@ def delete_index(catalog, es=None):
         es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     try:
-        es.delete(catalog)
+        es.indices.delete(index=catalog)
         message, status = 'Catalog {0} removed succesfully'.format(catalog), 200
-    except ElasticException:
+    except NotFoundError:
         message, status = 'Catalog does not exist!', 404
 
     return message, status
@@ -446,12 +445,11 @@ def check_index_exists(catalog, es=None):
     if es is None:
         es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
-    result = False
-    indices = es.get('_aliases').keys()
-    if catalog in indices:
-        result = True
-
-    return result
+    try:
+        es.indices.get(index=catalog)
+        return True
+    except NotFoundError:
+        return False
 
 
 def create_index(catalog, es=None, version=None):
@@ -459,7 +457,7 @@ def create_index(catalog, es=None, version=None):
         es, version = es_connect(url=REGISTRY_SEARCH_URL)
 
     mapping = es_mapping(version)
-    es.put(catalog, data=mapping)
+    es.indices.create(index=catalog, body=mapping, ignore=400)
 
     return 'Catalog {0} created succesfully'.format(catalog)
 
@@ -467,10 +465,12 @@ def create_index(catalog, es=None, version=None):
 def es_connect(url):
     LOGGER.debug('Connecting to elasticsearch at {0}'.format(url))
     if REGISTRY_SEARCH_USERNAME is not None and REGISTRY_SEARCH_PASSWORD is not None:
-        es = rawes.Elastic(url, auth=(REGISTRY_SEARCH_USERNAME, REGISTRY_SEARCH_PASSWORD))
+        LOGGER.error('Authentication not supported')
+        raise Exception("Authentication not supported")
     else:
-        es = rawes.Elastic(url)
-    version = es.get('')['version']['number']
+        es = Elasticsearch(url)
+
+    version = es.info()['version']['number']
 
     return es, version
 
@@ -484,16 +484,19 @@ def es_mapping(version):
                         "type": "nested",
                         "properties": {
                             "category": {
-                                "type": "string",
-                                "index": "not_analyzed"
+                                "type": "keyword"
                             }
                         }
                     },
                     "references": {
                         "type": "nested",
                         "properties": {
-                            "url": {"type": "string", "index": "not_analyzed"},
-                            "scheme": {"type": "string", "index": "not_analyzed"}
+                            "url": {
+                                "type": "keyword"
+                            },
+                            "scheme": {
+                                "type": "keyword"
+                            }
                         }
                     },
                     "layer_geoshape": {
@@ -502,7 +505,9 @@ def es_mapping(version):
                         "precision": REGISTRY_MAPPING_PRECISION,
                         "distance_error_pct": REGISTRY_MAPPING_DIST_ERR_PCT
                     },
-                    "layer_identifier": {"type": "string", "index": "not_analyzed"},
+                    "layer_identifier": {
+                        "type": "keyword"
+                    },
                     "title": text_field(version, copy_to="alltext"),
                     "abstract": text_field(version, copy_to="alltext"),
                     "alltext": text_field(version)
@@ -525,7 +530,7 @@ def es_mapping(version):
 
 def text_field(version, **kwargs):
     field_def = {"type": "string", "index": "analyzed"}
-    if version == '5.0.0':
+    if version >= '5':
         field_def = {"type": "text"}
     field_def.update(kwargs)
     return field_def
@@ -544,10 +549,11 @@ class RegistryRepository(Repository):
         if args and hasattr(args[0], 'url'):
             url = args[0].url
             self.catalog = parse_url(url) if urlparse(url).path != '/csw' else None
+
         try:
             self.es, self.version = es_connect(url=REGISTRY_SEARCH_URL)
             self.es_status = 200
-        except requests.exceptions.ConnectionError:
+        except:
             self.es_status = 404
 
         database = PYCSW['repository']['database']
@@ -1682,7 +1688,7 @@ def create_response_dict(catalog_id, catalog):
 def list_catalogs_view(request):
     es, _ = es_connect(url=REGISTRY_SEARCH_URL)
 
-    list_catalogs = es.get('_aliases').keys()
+    list_catalogs = es.indices.get_settings().keys()
     response_list = [create_response_dict(i, catalog) for i, catalog in enumerate(list_catalogs)]
     message, status = json.dumps(response_list), 200
 
@@ -1884,10 +1890,9 @@ def api_config_view(request):
 
 
 def index_with_bulk(catalog_slug, data_dict):
-    es_endpoint = '{0}/layer/_bulk'.format(catalog_slug)
     es, _ = es_connect(url=REGISTRY_SEARCH_URL)
     bulk_body = '{"index":{}}\n' + '\n{"index":{}}\n'.join(data_dict) + '\n{"index":{}}'
-    es.post(es_endpoint, data=bulk_body)
+    es.bulk(index=catalog_slug, body=bulk_body)
 
 
 def re_index_layers(catalog_slug):

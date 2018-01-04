@@ -25,6 +25,9 @@ setup(
     description='registry',
     long_description=open('README.md').read() + '\n\n' + open('CHANGELOG.md').read(),
     tests_require=['pytest-django', 'pytest', 'coveralls', 'flake8'],
+    install_requires=[
+        "elasticsearch>=6.0.0,<7.0.0"
+    ],
     cmdclass={'test': PyTest},
     py_modules=['registry'],
     classifiers=[

@@ -11,7 +11,7 @@ psycopg2
 django==1.9
 
 # registry
-rawes==0.5.5
+elasticsearch>=6.0.0,<7.0.0
 MapProxy==1.10
 
 # Search API
