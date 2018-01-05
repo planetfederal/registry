@@ -405,6 +405,7 @@ def record_to_dict(record):
         'layer_date': record.date_modified,
         'layer_originator': record.creator,
         'layer_identifier': record.identifier,
+        'type': 'remote_layer',
         'links': {
             'xml': '/'.join(['layer', record.identifier, 'xml']),
             'yml': '/'.join(['layer', record.identifier, 'yml']),
