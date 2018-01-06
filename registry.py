@@ -509,7 +509,11 @@ def es_mapping(version):
                     "layer_identifier": {
                         "type": "keyword"
                     },
-                    "title": text_field(version, copy_to="alltext"),
+                    "title": {
+                        "type": "text",
+                        "analyzer": "simple",
+                        "copy_to": "alltext"
+                    },
                     "abstract": text_field(version, copy_to="alltext"),
                     "alltext": text_field(version)
                 }
