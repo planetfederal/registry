@@ -483,7 +483,7 @@ def es_mapping(version):
                 "analyzer": {
                     "pattern_analyzer": {
                         "type": "pattern",
-                        "pattern": "\\W|_",
+                        "pattern": "\\W|_|:",
                         "lowercase": True
                     }
                 }
