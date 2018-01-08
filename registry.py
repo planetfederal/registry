@@ -478,6 +478,17 @@ def es_connect(url):
 
 def es_mapping(version):
     mappings = {
+        "settings": {
+            "analysis": {
+                "analyzer": {
+                    "pattern_analyzer": {
+                        "type": "pattern",
+                        "pattern": "\\W|_",
+                        "lowercase": True
+                    }
+                }
+            }
+        },
         "mappings": {
             "layer": {
                 "properties": {
@@ -509,12 +520,51 @@ def es_mapping(version):
                     "layer_identifier": {
                         "type": "keyword"
                     },
+                    "source": {
+                        "type": "keyword"
+                    },
                     "title": {
                         "type": "text",
-                        "analyzer": "simple",
-                        "copy_to": "alltext"
+                        "copy_to": "alltext",
+                        "fields": {
+                            "english": {
+                                "type": "text",
+                                "analyzer": "english"
+                            },
+                            "pattern": {
+                                "type": "text",
+                                "analyzer": "pattern_analyzer"
+                            }
+                        }
                     },
-                    "abstract": text_field(version, copy_to="alltext"),
+                    "title_alternate": {
+                        "type": "text",
+                        "copy_to": "alltext",
+                        "fields": {
+                            "english": {
+                                "type": "text",
+                                "analyzer": "english"
+                            },
+                            "pattern": {
+                                "type": "text",
+                                "analyzer": "pattern_analyzer"
+                            }
+                        }
+                    },
+                    "abstract": {
+                        "type": "text",
+                        "copy_to": "alltext",
+                        "fields": {
+                            "english": {
+                                "type": "text",
+                                "analyzer": "english"
+                            },
+                            "pattern": {
+                                "type": "text",
+                                "analyzer": "pattern_analyzer"
+                            }
+                        }
+                    },
                     "alltext": text_field(version)
                 }
             }
